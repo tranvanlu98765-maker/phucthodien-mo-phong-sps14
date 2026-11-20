@@ -1,0 +1,2968 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NHÓM 1: MÔ PHỎNG 3D TRẠM BƠM &amp; XỬ LÝ NƯỚC THẢI SPS14</title>
+  <!-- Favicon SVG ngôi sao vàng trên nền đỏ sẫm -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%238b1a1a'/%3E%3Cpolygon points='32,10 38.5,24.5 54,26.5 42.5,37 45.5,52.5 32,45 18.5,52.5 21.5,37 10,26.5 25.5,24.5' fill='%23fbbf24'/%3E%3C/svg%3E" />
+
+  <!-- Tailwind CSS & Phông chữ kỹ thuật Inter + JetBrains Mono -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Thư viện đồ họa WebGL Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #060b16;
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      user-select: none;
+    }
+
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #webgl-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    #webgl-container:active {
+      cursor: grabbing;
+    }
+
+    /* Lớp nhãn nổi 3D đồng bộ tọa độ chiếu Camera */
+    #labels-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      overflow: hidden;
+    }
+
+    .label-3d {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      pointer-events: auto;
+      cursor: pointer;
+      transition: opacity 0.15s ease, transform 0.12s ease;
+      will-change: left, top;
+    }
+
+    .label-3d:hover {
+      transform: translate(-50%, -105%) scale(1.05);
+      z-index: 25;
+    }
+
+    .detail-pin-3d {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      pointer-events: auto;
+      cursor: pointer;
+      width: 22px;
+      height: 22px;
+      border-radius: 9999px;
+      background: rgba(220, 38, 38, 0.92);
+      border: 1.5px solid #fecaca;
+      color: #ffffff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
+      transition: transform 0.15s ease, background-color 0.15s ease;
+    }
+
+    .detail-pin-3d:hover,
+    .detail-pin-3d.pin-active {
+      transform: translate(-50%, -50%) scale(1.25);
+      background: #0284c7;
+      border-color: #bae6fd;
+      z-index: 30;
+    }
+
+    /* Thanh cuộn tối gọn gàng */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #38bdf8;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #1e293b;
+      height: 6px;
+      border-radius: 999px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      border: 2px solid #0f172a;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.75);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- KHUNG CANVAS WEBGL 3D TOÀN MÀN HÌNH -->
+  <div id="webgl-container"></div>
+
+  <!-- LỚP NHÃN NỔI 3D ĐỒNG BỘ TỌA ĐỘ MÀN HÌNH -->
+  <div id="labels-overlay"></div>
+
+  <!-- ======================================================================= -->
+  <!-- HUD 1: THANH TIÊU ĐỀ & ĐIỀU KHIỂN CAMERA TRÊN CÙNG                      -->
+  <!-- ======================================================================= -->
+  <header class="fixed top-0 left-0 right-0 z-20 bg-[#080f1e]/90 backdrop-blur-md border-b border-slate-800/90 px-3 py-2 shadow-xl">
+    <div class="max-w-[1920px] mx-auto flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2">
+      
+      <!-- Avatar Sao Vàng Nền Đỏ & Tiêu Đề Dự Án -->
+      <div class="flex items-center justify-between gap-2.5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-lg overflow-hidden border border-amber-400/60 shadow-md shrink-0" title="Avatar Nhóm 1">
+            <svg class="w-full h-full block" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <radialGradient id="vn-flag-red-3d" cx="50%" cy="50%" r="65%">
+                  <stop offset="0%" stop-color="#b91c1c"/>
+                  <stop offset="55%" stop-color="#8b1a1a"/>
+                  <stop offset="100%" stop-color="#450a0a"/>
+                </radialGradient>
+                <linearGradient id="vn-flag-gold-3d" x1="20%" y1="15%" x2="80%" y2="85%">
+                  <stop offset="0%" stop-color="#fde047"/>
+                  <stop offset="55%" stop-color="#facc15"/>
+                  <stop offset="100%" stop-color="#ca8a04"/>
+                </linearGradient>
+              </defs>
+              <rect width="100" height="100" fill="url(#vn-flag-red-3d)"/>
+              <polygon points="50,16 58.1,40.9 84.2,40.9 63.1,56.3 71.2,81.2 50,65.8 28.8,81.2 36.9,56.3 15.8,40.9 41.9,40.9"
+                       fill="url(#vn-flag-gold-3d)"/>
+              <g stroke="#290404" stroke-width="0.9" fill="none" opacity="0.42">
+                <path d="M 18 12 L 32 28 L 46 31 L 60 33 L 76 22 L 88 10"/>
+                <path d="M 10 62 L 28 54 L 44 58 L 58 68 L 78 72 L 94 86"/>
+                <path d="M 74 0 L 72 24 L 66 48 L 74 74 L 68 100"/>
+              </g>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h1 class="text-xs sm:text-sm lg:text-base font-bold tracking-wide text-slate-100">
+                NHÓM 1: MÔ PHỎNG 3D TRẠM BƠM &amp; XỬ LÝ NƯỚC THẢI SPS14
+              </h1>
+              <span class="px-1.5 py-0.5 text-[10px] font-mono-tech font-bold rounded bg-sky-500/15 text-sky-300 border border-sky-500/35">
+                3D DIGITAL TWIN
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-400 hidden sm:block">
+              Đà Nẵng • Chuột trái: Xoay 360° | Chuột phải / Shift+Kéo: Di chuyển | Cuộn: Thu phóng | Click thiết bị để thanh tra
+            </p>
+          </div>
+        </div>
+
+        <!-- Đồng hồ trên mobile -->
+        <div class="xl:hidden text-right font-mono-tech shrink-0">
+          <div id="clock-mobile" class="text-[11px] font-bold text-sky-400">--:--:--</div>
+          <div id="sim-time-mobile" class="text-[10px] text-slate-400">T+ 00:00:00</div>
+        </div>
+      </div>
+
+      <!-- Các nút điều khiển góc Camera 3D, Nhãn 3D, Bảng so sánh VSD & Khóa trình chiếu -->
+      <div class="flex flex-wrap items-center gap-1.5">
+        <!-- Preset Góc nhìn Camera -->
+        <div class="flex flex-wrap items-center bg-slate-900/90 p-1 rounded-lg border border-slate-700/80 gap-1">
+          <button id="cam-btn-OVERVIEW" onclick="setCameraPreset('OVERVIEW')" class="px-2 py-1 rounded text-[11px] font-semibold bg-sky-600 text-white transition">
+            Toàn cảnh
+          </button>
+          <button id="cam-btn-SPS14" onclick="setCameraPreset('SPS14')" class="px-2 py-1 rounded text-[11px] font-semibold text-slate-300 hover:bg-slate-800 transition">
+            SPS14 &amp; Tủ VSD
+          </button>
+          <button id="cam-btn-EQ" onclick="setCameraPreset('EQ')" class="px-2 py-1 rounded text-[11px] font-semibold text-slate-300 hover:bg-slate-800 transition">
+            Bể điều hòa (11 CT)
+          </button>
+          <button id="cam-btn-BIO" onclick="setCameraPreset('BIO')" class="px-2 py-1 rounded text-[11px] font-semibold text-slate-300 hover:bg-slate-800 transition">
+            Aerotank &amp; Lắng
+          </button>
+          <button id="cam-btn-CEMS" onclick="setCameraPreset('CEMS')" class="px-2 py-1 rounded text-[11px] font-semibold text-slate-300 hover:bg-slate-800 transition">
+            Khử trùng &amp; CEMS
+          </button>
+          <button id="cam-btn-ORBIT" onclick="toggleAutoOrbit()" class="px-2 py-1 rounded text-[11px] font-semibold text-amber-300 hover:bg-slate-800 border border-amber-500/30 transition" title="Tự động xoay quanh nhà máy">
+            ↻ Tự xoay
+          </button>
+        </div>
+
+        <!-- Bật/Tắt Nhãn 3D & 11 Chi tiết Bể Điều Hòa -->
+        <button id="btn-toggle-labels" onclick="toggle3DLabels()"
+          class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-900 hover:bg-slate-800 text-sky-300 border border-slate-700 transition">
+          Nhãn 3D: BẬT
+        </button>
+
+        <button id="btn-toggle-eq-pins" onclick="toggleEqDetailPins()"
+          class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-900 hover:bg-slate-800 text-rose-300 border border-slate-700 transition"
+          title="Hiển thị 11 điểm đánh số cấu tạo Bể điều hòa trong không gian 3D">
+          11 CT Bể ĐH: BẬT
+        </button>
+
+        <!-- Mở Modal Bảng so sánh VSD & Dự toán -->
+        <button onclick="toggleSummaryModal(true, 'TAB_VSD')"
+          class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white border border-sky-400/40 shadow transition flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+          <span>Bảng VSD &amp; Dự toán</span>
+        </button>
+
+        <!-- Nút Khóa / Mở điều khiển (Chống bấm nhầm khi trình chiếu) -->
+        <button id="btn-lock-controls" onclick="toggleControlLock()"
+          class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/40 transition flex items-center gap-1"
+          title="Khóa thao tác điều khiển thiết bị khi trình chiếu công khai">
+          <span id="lock-icon">🔓</span>
+          <span id="lock-text">Mở ĐK</span>
+        </button>
+
+        <!-- Đồng hồ Desktop -->
+        <div class="hidden xl:block text-right font-mono-tech pl-2 border-l border-slate-800">
+          <div id="clock-desktop" class="text-xs font-bold text-sky-400">--:--:--</div>
+          <div id="sim-time-desktop" class="text-[10px] text-slate-400">Mô phỏng: 00:00:00</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================================================================= -->
+  <!-- HUD 2: BẢNG THANH TRA THIẾT BỊ & THÔNG SỐ 3D BÊN PHẢI (CÓ THỂ THU GỌN)  -->
+  <!-- ======================================================================= -->
+  <aside id="inspector-drawer" class="fixed top-[92px] xl:top-[64px] right-3 z-20 w-[330px] sm:w-[375px] max-h-[calc(100vh-235px)] bg-[#091120]/90 backdrop-blur-md border border-slate-700/80 rounded-xl shadow-2xl flex flex-col overflow-hidden transition-all duration-200">
+    <div class="px-3.5 py-2 bg-slate-900/95 border-b border-slate-800 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-sky-400 animate-ping"></span>
+        <h2 class="text-[11px] font-bold uppercase tracking-wider text-sky-400">
+          Thanh Tra Thiết Bị &amp; Thông Số 3D
+        </h2>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span id="inspector-tag" class="px-1.5 py-0.5 rounded bg-sky-500/15 border border-sky-500/30 font-mono-tech text-[10px] font-bold text-sky-300">
+          SPS14_STATION
+        </span>
+        <button onclick="toggleInspectorCollapse()" id="btn-collapse-inspector"
+          class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold" title="Thu gọn / Mở rộng bảng">
+          −
+        </button>
+      </div>
+    </div>
+
+    <div id="inspector-body" class="p-3 overflow-y-auto space-y-2.5 text-xs">
+      <!-- Nội dung động theo thiết bị 3D được chọn -->
+    </div>
+  </aside>
+
+  <!-- ======================================================================= -->
+  <!-- HUD 3: BẢNG ĐIỀU KHIỂN TRUYỀN ĐỘNG VSD/DOL & 7 KHUNG GIỜ PHÍA DƯỚI      -->
+  <!-- ======================================================================= -->
+  <footer class="fixed bottom-2.5 left-3 right-3 z-20 pointer-events-none">
+    <div class="max-w-[1920px] mx-auto flex flex-col lg:flex-row lg:items-end lg:justify-between gap-2.5">
+      
+      <!-- Khối trái: Chọn 3 Chế độ truyền động (DOL / VSD / VSD+Bypass) & 7 Khung giờ TH1-TH7 -->
+      <div class="pointer-events-auto bg-[#091120]/92 backdrop-blur-md border border-slate-700/85 rounded-xl p-2.5 shadow-2xl space-y-2 max-w-full lg:max-w-[920px]">
+        
+        <!-- Hàng 1: 3 Chế độ truyền động & Tốc độ mô phỏng -->
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-1 bg-slate-950/80 p-1 rounded-lg border border-slate-800">
+            <button id="btn-drive-DOL" onclick="setDriveMode('DOL')"
+              class="px-2 py-1 rounded text-[11px] font-semibold text-slate-400 hover:text-white transition"
+              title="Chạy trực tiếp lưới 100% tốc độ 1.455 v/p, bơm rút cạn rồi dừng nghỉ (tổn hao 5%/h nghỉ)">
+              KHÔNG BIẾN TẦN (DOL 100%)
+            </button>
+            <button id="btn-drive-VSD" onclick="setDriveMode('VSD')"
+              class="px-2 py-1 rounded text-[11px] font-semibold text-slate-400 hover:text-white transition"
+              title="Điều tốc biến tần liên tục 24/24h theo lưu lượng n2 = (Q2/Q1)*1455, cộng 10% tổn thất VSD">
+              CÓ BIẾN TẦN (VSD 24/24h)
+            </button>
+            <button id="btn-drive-VSD_BYPASS" onclick="setDriveMode('VSD_BYPASS')"
+              class="px-2 py-1 rounded text-[11px] font-semibold bg-sky-600 text-white shadow transition"
+              title="Tự động đóng Contactor Bypass chạy lưới ở TH1, TH3, TH5 và điều tốc VSD ở TH2, TH4, TH6, TH7">
+              BIẾN TẦN + BYPASS TỐI ƯU
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <!-- PLC AUTO / MANUAL -->
+            <div class="flex items-center bg-slate-950/80 p-1 rounded-lg border border-slate-800">
+              <button id="btn-mode-auto" onclick="setControlMode('AUTO')" class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white">AUTO</button>
+              <button id="btn-mode-manual" onclick="setControlMode('MANUAL')" class="px-2 py-0.5 rounded text-[10px] font-bold text-slate-400 hover:text-white">MANUAL</button>
+            </div>
+            <!-- Tốc độ 1x / 10x / 30x -->
+            <div class="flex items-center bg-slate-950/80 p-1 rounded-lg border border-slate-800 font-mono-tech">
+              <button id="btn-speed-1" onclick="setSimSpeed(1)" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-600 text-white">1x</button>
+              <button id="btn-speed-10" onclick="setSimSpeed(10)" class="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-400 hover:text-white">10x</button>
+              <button id="btn-speed-30" onclick="setSimSpeed(30)" class="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-400 hover:text-white">30x</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hàng 2: 7 Khung giờ khảo sát TH1 - TH7 + Chu kỳ 24h + Thanh trượt Q_vào -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-800/80">
+          <div class="flex flex-wrap items-center gap-1 font-mono-tech">
+            <button id="btn-case-TH1" onclick="selectSurveyCase('TH1')" class="px-2 py-1 rounded text-[10px] font-bold bg-sky-600 text-white border border-sky-400/50">TH1 (4-6h)</button>
+            <button id="btn-case-TH2" onclick="selectSurveyCase('TH2')" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700">TH2 (7-10h)</button>
+            <button id="btn-case-TH3" onclick="selectSurveyCase('TH3')" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700">TH3 (11-13h)</button>
+            <button id="btn-case-TH4" onclick="selectSurveyCase('TH4')" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700">TH4 (14-16h)</button>
+            <button id="btn-case-TH5" onclick="selectSurveyCase('TH5')" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700">TH5 (17-20h)</button>
+            <button id="btn-case-TH6" onclick="selectSurveyCase('TH6')" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700">TH6 (21-1h)</button>
+            <button id="btn-case-TH7" onclick="selectSurveyCase('TH7')" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700">TH7 (2-3h)</button>
+            <button id="btn-case-AUTO_24H" onclick="selectSurveyCase('AUTO_24H')" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/40">↻ Chu kỳ 24h</button>
+          </div>
+
+          <div class="flex items-center gap-2 bg-slate-950/75 px-2.5 py-1 rounded-lg border border-slate-800">
+            <span class="text-[11px] text-slate-400">Q<sub>vào</sub>: <strong id="hud-qin-val" class="font-mono-tech text-sky-400">1.905</strong> m³/h</span>
+            <input id="q-in-slider" type="range" min="500" max="2000" step="5" value="1905" oninput="updateInletFlow(this.value)" class="w-20 sm:w-24" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Khối phải: Thẻ KPI Thời gian thực (Tốc độ n2, Điện năng A1 vs A2, Tiết kiệm ΔA, HRT) -->
+      <div class="pointer-events-auto bg-[#091120]/92 backdrop-blur-md border border-slate-700/85 rounded-xl p-2.5 shadow-2xl grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4 gap-2 font-mono-tech text-[11px] lg:min-w-[490px]">
+        <div class="bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800">
+          <div class="text-[10px] text-slate-400">Tốc độ / Tần số SPS14</div>
+          <div id="kpi-rpm-hz" class="text-xs font-bold text-sky-400 mt-0.5">1455 v/p • 50Hz</div>
+          <div id="kpi-drive-tag" class="text-[10px] text-emerald-400">BYPASS LƯỚI (2 Bơm)</div>
+        </div>
+
+        <div class="bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800">
+          <div class="text-[10px] text-slate-400">Điện khung giờ (A₁ / A₂)</div>
+          <div id="kpi-energy-compare" class="text-xs font-bold text-amber-300 mt-0.5">192.6 / 211.9 kWh</div>
+          <div id="kpi-saving-delta" class="text-[10px] text-emerald-400">Tránh lỗ 19.26 kWh</div>
+        </div>
+
+        <div class="bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800">
+          <div class="text-[10px] text-slate-400">Ngăn thu SPS14 (100m³)</div>
+          <div id="kpi-sps-level" class="text-xs font-bold text-slate-100 mt-0.5">2.24 m (56 m³)</div>
+          <div id="kpi-sps-hrt" class="text-[10px] text-emerald-400">Lưu: 1.8 phút</div>
+        </div>
+
+        <div class="bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800">
+          <div class="text-[10px] text-slate-400">Bể Điều Hòa (3.200m³)</div>
+          <div id="kpi-eq-level" class="text-xs font-bold text-cyan-300 mt-0.5">3.60 m (2560 m³)</div>
+          <div id="kpi-eq-hrt" class="text-[10px] text-sky-400">HRT: 4.65 giờ</div>
+        </div>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL BẢNG SO SÁNH 7 TRƯỜNG HỢP, BIỂU ĐỒ & DỰ TOÁN HOÀN VỐN             -->
+  <!-- ======================================================================= -->
+  <div id="summary-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden items-center justify-center p-2.5 sm:p-5">
+    <div class="bg-[#0d1526] border border-slate-700 rounded-2xl max-w-6xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+      
+      <!-- Header Modal -->
+      <div class="px-4 sm:px-6 py-3.5 bg-slate-900 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div>
+          <h2 class="text-sm sm:text-lg font-bold text-slate-100">PHÂN TÍCH TIẾT KIỆM ĐIỆN NĂNG BIẾN TẦN (VSD) &amp; DỰ TOÁN ĐẦU TƯ SPS14</h2>
+          <p class="text-xs text-slate-400">So sánh 7 khung giờ khảo sát (DOL vs VSD vs Bypass), biểu đồ tốc độ quay n₂ &amp; hiệu quả hoàn vốn</p>
+        </div>
+        <div class="flex items-center gap-2 self-end sm:self-auto">
+          <button onclick="copyTechnicalReport()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white transition">
+            Sao chép báo cáo
+          </button>
+          <button onclick="toggleSummaryModal(false)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Thanh Tabs trong Modal -->
+      <div class="px-4 sm:px-6 pt-2.5 bg-slate-900/60 border-b border-slate-800 flex flex-wrap gap-1.5">
+        <button id="modal-tab-btn-TAB_VSD" onclick="switchModalTab('TAB_VSD')"
+          class="px-3.5 py-2 rounded-t-lg text-xs font-bold border-b-2 border-sky-400 bg-slate-800/80 text-sky-300 transition">
+          1. Bảng So Sánh 7 Trường Hợp &amp; Biểu Đồ
+        </button>
+        <button id="modal-tab-btn-TAB_CAPEX" onclick="switchModalTab('TAB_CAPEX')"
+          class="px-3.5 py-2 rounded-t-lg text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">
+          2. Dự Toán Biến Tần &amp; Thời Gian Hoàn Vốn
+        </button>
+        <button id="modal-tab-btn-TAB_PROCESS" onclick="switchModalTab('TAB_PROCESS')"
+          class="px-3.5 py-2 rounded-t-lg text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">
+          3. Thông Số 5 Cụm 3D &amp; 11 Chi Tiết Bể Điều Hòa
+        </button>
+      </div>
+
+      <!-- Nội dung cuộn của Modal -->
+      <div class="p-4 sm:p-5 overflow-y-auto space-y-5 text-xs sm:text-sm text-slate-300">
+        
+        <!-- TAB 1: SO SÁNH 7 TRƯỜNG HỢP & BIỂU ĐỒ -->
+        <div id="modal-pane-TAB_VSD" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
+              <div class="text-[11px] text-slate-400 font-semibold">Điện năng 1 ngày/đêm (24h)</div>
+              <div class="mt-1 font-mono-tech text-xs text-amber-400">Không VSD: <strong>1.188,16</strong> kWh</div>
+              <div class="mt-0.5 font-mono-tech text-xs text-sky-400">Có VSD 24/24: <strong>903,06</strong> kWh</div>
+              <div class="mt-1 pt-1 border-t border-slate-800 text-xs font-mono-tech text-emerald-400 font-bold">
+                Tiết kiệm ΔA = 285,10 kWh/ngày
+              </div>
+            </div>
+
+            <div class="bg-slate-900/90 border border-emerald-500/30 rounded-xl p-3">
+              <div class="text-[11px] text-emerald-300 font-semibold">Kết hợp Bypass giờ cao điểm</div>
+              <div class="text-lg font-bold font-mono-tech text-emerald-400 mt-1">336,74 kWh/ngày</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">
+                Loại bỏ <strong class="text-slate-200">51,64 kWh/ngày</strong> tổn thất VSD tại TH1, TH3, TH5 (tải 99,2–99,8%)
+              </div>
+            </div>
+
+            <div class="bg-slate-900/90 border border-sky-500/30 rounded-xl p-3">
+              <div class="text-[11px] text-sky-300 font-semibold">Tiết kiệm năm (330 ngày/năm)</div>
+              <div class="text-base font-bold font-mono-tech text-sky-400 mt-1">94.083 kWh/năm <span class="text-xs text-slate-400">(30,78% A<sub>T</sub>)</span></div>
+              <div class="text-xs font-mono-tech text-emerald-400 font-semibold mt-0.5">
+                Tối ưu Bypass: 111.124,2 kWh (36,36%)
+              </div>
+              <div class="text-[10px] text-slate-500 mt-0.5">So với điện năng năm A<sub>T</sub> = 305.650 kWh</div>
+            </div>
+
+            <div class="bg-slate-900/90 border border-indigo-500/30 rounded-xl p-3">
+              <div class="text-[11px] text-indigo-300 font-semibold">Hiệu quả kinh tế (1.518 đ/kWh)</div>
+              <div class="text-base font-bold font-mono-tech text-amber-300 mt-1">142.817.994 VNĐ/năm</div>
+              <div class="text-xs font-mono-tech text-emerald-400 font-semibold mt-0.5">
+                Tối ưu Bypass: 168.686.536 VNĐ/năm
+              </div>
+              <div class="text-[10px] text-slate-400 mt-0.5">Hoàn vốn: <strong>1,47 năm</strong> (hoặc <strong>1,24 năm</strong>)</div>
+            </div>
+          </div>
+
+          <!-- Biểu đồ SVG trực quan -->
+          <div class="bg-slate-900/85 border border-slate-800 rounded-xl p-3.5">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-sky-400">
+                Biểu Đồ So Sánh Điện Năng Tiêu Thụ (A₁ vs A₂) &amp; Tốc Độ Quay Bơm (n₂) Qua 7 Khung Giờ
+              </h3>
+              <div class="flex flex-wrap items-center gap-3 text-[11px]">
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-amber-500 inline-block"></span> Không VSD (A₁)</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-sky-500 inline-block"></span> Có VSD 24/24h (A₂)</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span> Tối ưu VSD + Bypass</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span> Tốc độ n₂ (v/p)</span>
+              </div>
+            </div>
+            <div id="vsd-chart-container" class="w-full overflow-x-auto"></div>
+          </div>
+
+          <!-- Bảng tổng hợp 7 trường hợp -->
+          <div class="border border-slate-800 rounded-xl overflow-x-auto">
+            <table class="w-full text-left border-collapse font-mono-tech text-[11px]">
+              <thead class="bg-slate-900 text-slate-300">
+                <tr>
+                  <th class="p-2 border-b border-slate-800">TH</th>
+                  <th class="p-2 border-b border-slate-800">Khung giờ (T)</th>
+                  <th class="p-2 border-b border-slate-800 text-right">Nước về (m³)</th>
+                  <th class="p-2 border-b border-slate-800 text-right">Q cần (m³/h)</th>
+                  <th class="p-2 border-b border-slate-800 text-center">Số bơm</th>
+                  <th class="p-2 border-b border-slate-800 text-right text-amber-300">Không VSD t_vh / nghỉ</th>
+                  <th class="p-2 border-b border-slate-800 text-right text-amber-300">Q/bơm (1455 v/p)</th>
+                  <th class="p-2 border-b border-slate-800 text-right text-amber-300">Điện A₁ (kWh)</th>
+                  <th class="p-2 border-b border-slate-800 text-right text-sky-300">VSD Q/bơm (m³/h)</th>
+                  <th class="p-2 border-b border-slate-800 text-right text-sky-300">Tỉ lệ (n₂/n₁)</th>
+                  <th class="p-2 border-b border-slate-800 text-right text-sky-300">Tốc độ n₂ (v/p)</th>
+                  <th class="p-2 border-b border-slate-800 text-right text-sky-300">Điện A₂ (kWh)</th>
+                  <th class="p-2 border-b border-slate-800 text-right text-emerald-300">Tiết kiệm ΔA</th>
+                  <th class="p-2 border-b border-slate-800 text-center">Chế độ tối ưu</th>
+                </tr>
+              </thead>
+              <tbody id="vsd-comparison-tbody" class="divide-y divide-slate-800/80"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TAB 2: DỰ TOÁN ĐẦU TƯ & THỜI GIAN THU HỒI VỐN -->
+        <div id="modal-pane-TAB_CAPEX" class="hidden space-y-4">
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div class="lg:col-span-2 border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60">
+              <div class="px-4 py-2.5 bg-slate-900 border-b border-slate-800 font-bold text-xs text-sky-400 uppercase">
+                Bảng Dự Toán Chi Phí Đầu Tư Biến Tần &amp; Khí Cụ Điện Bảo Vệ (Trạm Bơm SPS14)
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                  <thead class="bg-slate-950/60 text-slate-400">
+                    <tr>
+                      <th class="p-2.5 border-b border-slate-800">STT</th>
+                      <th class="p-2.5 border-b border-slate-800">Tên thiết bị / Hạng mục</th>
+                      <th class="p-2.5 border-b border-slate-800">Thông số / Mã hiệu</th>
+                      <th class="p-2.5 border-b border-slate-800 text-center">SL</th>
+                      <th class="p-2.5 border-b border-slate-800 text-right">Đơn giá (VNĐ)</th>
+                      <th class="p-2.5 border-b border-slate-800 text-right">Thành tiền (VNĐ)</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/80">
+                    <tr>
+                      <td class="p-2.5 font-mono-tech">1</td>
+                      <td class="p-2.5 font-semibold text-slate-100">Biến tần Siemens MICROMASTER 430 (37 kW)</td>
+                      <td class="p-2.5 font-mono-tech text-[11px] text-slate-400">380–480V ±10% • 6SE6430-2UD33-7EA0</td>
+                      <td class="p-2.5 text-center font-mono-tech">02 bộ</td>
+                      <td class="p-2.5 text-right font-mono-tech">58.500.000</td>
+                      <td class="p-2.5 text-right font-mono-tech font-bold text-sky-300">117.000.000</td>
+                    </tr>
+                    <tr>
+                      <td class="p-2.5 font-mono-tech">2</td>
+                      <td class="p-2.5 font-semibold text-slate-100">Contactor Schneider (động cơ 34–37 kW)</td>
+                      <td class="p-2.5 font-mono-tech text-[11px] text-slate-400">LC1D80A-AC 220V (80A)</td>
+                      <td class="p-2.5 text-center font-mono-tech">02 cái</td>
+                      <td class="p-2.5 text-right font-mono-tech">4.350.000</td>
+                      <td class="p-2.5 text-right font-mono-tech font-bold text-sky-300">8.700.000</td>
+                    </tr>
+                    <tr>
+                      <td class="p-2.5 font-mono-tech">3</td>
+                      <td class="p-2.5 font-semibold text-slate-100">MCCB 3 pha Schneider (bảo vệ nhánh)</td>
+                      <td class="p-2.5 font-mono-tech text-[11px] text-slate-400">EZCV250N3100 (100A, 25 kA)</td>
+                      <td class="p-2.5 text-center font-mono-tech">02 cái</td>
+                      <td class="p-2.5 text-right font-mono-tech">7.650.000</td>
+                      <td class="p-2.5 text-right font-mono-tech font-bold text-sky-300">15.300.000</td>
+                    </tr>
+                    <tr>
+                      <td class="p-2.5 font-mono-tech">4</td>
+                      <td class="p-2.5 font-semibold text-slate-100">Tủ điện dùng lại, cảm biến mức, thiết bị bảo vệ &amp; vật tư phụ</td>
+                      <td class="p-2.5 font-mono-tech text-[11px] text-slate-400">Trọn bộ hệ thống điều khiển</td>
+                      <td class="p-2.5 text-center font-mono-tech">01 hệ</td>
+                      <td class="p-2.5 text-right font-mono-tech">20.000.000</td>
+                      <td class="p-2.5 text-right font-mono-tech font-bold text-sky-300">20.000.000</td>
+                    </tr>
+                    <tr class="bg-slate-900/90 font-semibold">
+                      <td colspan="5" class="p-2.5 text-right text-slate-300">Tổng chi phí trang bị thiết bị (V<sub>tb</sub> = V₁ + V₂ + V₃ + V₄):</td>
+                      <td class="p-2.5 text-right font-mono-tech text-slate-100">161.000.000</td>
+                    </tr>
+                    <tr class="bg-slate-900/90">
+                      <td colspan="5" class="p-2.5 text-right text-slate-400">Chi phí vận hành, thi công lắp đặt, lập trình &amp; chạy thử (30% V<sub>tb</sub>):</td>
+                      <td class="p-2.5 text-right font-mono-tech text-amber-300">48.300.000</td>
+                    </tr>
+                    <tr class="bg-indigo-950/50 font-bold text-sm">
+                      <td colspan="5" class="p-3 text-right text-indigo-200">TỔNG VỐN ĐẦU TƯ LẮP ĐẶT (V = V<sub>tb</sub> + 0,3 × V<sub>tb</sub>):</td>
+                      <td class="p-3 text-right font-mono-tech text-emerald-400">209.300.000 VNĐ</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-2">
+                <h4 class="text-xs font-bold uppercase text-amber-400">Thông Số Động Cơ &amp; Cơ Sở Tính Toán</h4>
+                <div class="text-xs space-y-1 text-slate-300">
+                  <div>• 02 bơm công tác + 01 bơm dự phòng: <strong class="font-mono-tech text-white">P<sub>đm</sub> = 34 kW</strong>, tốc độ định mức <strong class="font-mono-tech text-white">n₁ = 1.455 v/p</strong>, 3 pha 380V, cosφ = 0,80, η = 0,90.</div>
+                  <div>• Dòng định mức: <code class="font-mono-tech text-sky-400">I_đm = 34.000 / (√3 × 380 × 0,80 × 0,90) = 71,7 A</code>.</div>
+                  <div>• Không VSD: 1 bơm đạt <strong class="font-mono-tech">1.050 m³/h (32,5 kW)</strong>; 2 bơm đạt <strong class="font-mono-tech">1.908 m³/h (32,1 kW/bơm)</strong>; tổn hao dừng/chờ <strong class="text-amber-300">5%/h nghỉ</strong>.</div>
+                  <div>• Có VSD: <code class="font-mono-tech text-sky-400">n₂ = (Q₂/Q₁) × 1.455</code>; công suất tỉ lệ <code class="font-mono-tech text-sky-400">(n₂/n₁)³</code>, tổn thất nội bộ VSD <strong class="text-sky-300">10% (hệ số 1,1)</strong>.</div>
+                </div>
+              </div>
+
+              <div class="bg-emerald-950/30 border border-emerald-500/40 rounded-xl p-3.5 space-y-2.5">
+                <h4 class="text-xs font-bold uppercase text-emerald-400">So Sánh Thời Gian Thu Hồi Vốn (T = V / ΔC)</h4>
+                <div class="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800">
+                  <div class="text-[11px] font-bold text-sky-400">Phương án 1: Vận hành Biến tần liên tục 24/24h</div>
+                  <div class="text-xs text-slate-300 mt-1">• Tiết kiệm: <strong class="font-mono-tech">94.083 kWh/năm</strong> (142.817.994 VNĐ/năm)</div>
+                  <div class="text-xs text-amber-300 font-bold mt-0.5 font-mono-tech">→ Hoàn vốn T = 209,3 tr / 142,82 tr = 1,47 năm (≈ 18 tháng)</div>
+                </div>
+
+                <div class="p-2.5 rounded-lg bg-slate-950/80 border border-emerald-500/40">
+                  <div class="text-[11px] font-bold text-emerald-400">Phương án 2: Biến tần + Contactor Bypass giờ cao điểm</div>
+                  <div class="text-xs text-slate-300 mt-1">• Chạy Bypass trực tiếp lưới ở TH1, TH3, TH5 → tiết kiệm <strong class="font-mono-tech">111.124,2 kWh/năm</strong> (168.686.536 VNĐ/năm)</div>
+                  <div class="text-xs text-emerald-400 font-bold mt-0.5 font-mono-tech">→ Hoàn vốn T = 209,3 tr / 168,69 tr = 1,24 năm (≈ 15 tháng)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: THÔNG SỐ 5 CỤM 3D & 11 CHI TIẾT BỂ ĐIỀU HÒA -->
+        <div id="modal-pane-TAB_PROCESS" class="hidden space-y-4">
+          <div class="overflow-x-auto border border-slate-800 rounded-xl">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead class="bg-slate-900/90 text-slate-300">
+                <tr>
+                  <th class="p-2.5 border-b border-slate-800">Cụm công trình 3D</th>
+                  <th class="p-2.5 border-b border-slate-800">Kích thước / Dung tích</th>
+                  <th class="p-2.5 border-b border-slate-800">Thời gian lưu (HRT)</th>
+                  <th class="p-2.5 border-b border-slate-800">Thiết bị cơ điện chính</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/80">
+                <tr>
+                  <td class="p-2.5 font-semibold text-slate-100">1. Tiếp nhận &amp; Song chắn rác</td>
+                  <td class="p-2.5 font-mono-tech">Q<sub>tb</sub> = 1.426,5 m³/h (800–1.905 m³/h)</td>
+                  <td class="p-2.5 font-mono-tech">&lt; 1 phút (v = 0,8 m/s)</td>
+                  <td class="p-2.5">Song chắn rác thô cơ khí SCR-101 (e = 20 mm), cảm biến FIT-101.</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 font-semibold text-emerald-400">2. Ngăn thu Trạm bơm SPS14</td>
+                  <td class="p-2.5 font-mono-tech">V<sub>hữu ích</sub> = 100 m³ (H<sub>max</sub> = 4,0 m)</td>
+                  <td class="p-2.5 font-mono-tech text-emerald-300">5 – 15 phút (TCVN 7957:2023)</td>
+                  <td class="p-2.5">3 bơm chìm P-101A/B/C (34 kW, 1455 v/p), 02 Biến tần Siemens MM430 37kW &amp; Contactor Bypass KM-BP1/2.</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 font-semibold text-sky-400">3. Bể Điều Hòa (EQ-201)</td>
+                  <td class="p-2.5 font-mono-tech">V = 3.200 m³ (H = 4,5 m; L/B = 2,5)</td>
+                  <td class="p-2.5 font-mono-tech text-sky-300">4 – 8 giờ (HRT = V / Q)</td>
+                  <td class="p-2.5">2 máy thổi khí BL-201A/B, đĩa phân phối khí, 2 bơm chìm P-201A/B &amp; đầy đủ 11 chi tiết cấu tạo.</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 font-semibold text-amber-400">4. Aerotank &amp; Bể Lắng Thứ Cấp</td>
+                  <td class="p-2.5 font-mono-tech">AT-301 &amp; Bể lắng tròn ST-401</td>
+                  <td class="p-2.5 font-mono-tech">HRT<sub>Aero</sub> ≈ 4,4 giờ</td>
+                  <td class="p-2.5">Máy thổi khí BL-301A/B, đầu dò DO-301, cầu gạt bùn SC-401, bơm RAS-401 &amp; bơm WAS-402.</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 font-semibold text-teal-400">5. Khử Trùng &amp; Trạm CEMS</td>
+                  <td class="p-2.5 font-mono-tech">Bể tiếp xúc zic-zac CT-501</td>
+                  <td class="p-2.5 font-mono-tech">30 phút (Cl₂ dư 0,2–0,5 mg/L)</td>
+                  <td class="p-2.5">Bồn NaOCl, bơm định lượng D-501, trạm quan trắc CEMS đạt QCVN 14:2008/BTNMT.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+            <h4 class="text-xs font-bold uppercase text-sky-400 mb-2">Danh Mục 11 Chi Tiết Cấu Tạo Bể Điều Hòa (Hiển Thị Trực Tiếp Trên Mô Hình 3D)</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs text-slate-300">
+              <div><span class="text-red-400 font-bold">01.</span> Ống dẫn nước thải vào</div>
+              <div><span class="text-red-400 font-bold">02.</span> Song chắn rác thô / ngăn phân phối</div>
+              <div><span class="text-red-400 font-bold">03.</span> Hệ thống ống phân phối khí</div>
+              <div><span class="text-red-400 font-bold">04.</span> Đĩa phân phối khí (sục bọt khí 3D)</div>
+              <div><span class="text-red-400 font-bold">05.</span> Bơm chìm nước thải P-201A/B</div>
+              <div><span class="text-red-400 font-bold">06.</span> Thang inox bảo trì SUS304</div>
+              <div><span class="text-red-400 font-bold">07.</span> Cảm biến mức nước siêu âm LIT-201</div>
+              <div><span class="text-red-400 font-bold">08.</span> Ống tràn sự cố</div>
+              <div><span class="text-red-400 font-bold">09.</span> Ống xả cặn đáy bể</div>
+              <div><span class="text-red-400 font-bold">10.</span> Ống thông hơi</div>
+              <div><span class="text-red-400 font-bold">11.</span> Lan can an toàn màu vàng</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST THÔNG BÁO (THAY THẾ HOÀN TOÀN ALERT) -->
+  <div id="scada-toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 hidden max-w-md bg-slate-900/95 border border-sky-500/60 text-slate-100 px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2.5 backdrop-blur-md">
+    <span class="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0 animate-pulse"></span>
+    <span id="scada-toast-msg">Thông báo hệ thống</span>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. DỮ LIỆU KHẢO SÁT 7 KHUNG GIỜ TRẠM BƠM SPS14 & 11 CHI TIẾT BỂ ĐIỀU HÒA
+    // =========================================================================
+    const N_RATED = 1455; // Tốc độ định mức 1455 vòng/phút (50 Hz)
+
+    const SURVEY_CASES = [
+      {
+        id: 'TH1', label: 'TH1 (4h-6h)', timeRange: '4h - 6h', hours: 3.0,
+        volume: 5715, qNeedTotal: 1905.00, pumpsCount: 2,
+        dolRunHours: 3.00, dolIdleHours: 0.00, dolQPerPump: 954, dolPPerPump: 32.1, a1: 192.60,
+        vsdQPerPump: 952.50, speedRatio: 1.00, n2: 1455, a2: 211.86, deltaA: -19.26,
+        recommendBypass: true,
+        note: 'Lưu lượng đạt 99,8% định mức; chạy qua VSD chịu 10% tổn thất nội bộ → Khuyến nghị đóng Contactor Bypass (tiết kiệm 19,26 kWh).'
+      },
+      {
+        id: 'TH2', label: 'TH2 (7h-10h)', timeRange: '7h - 10h', hours: 4.0,
+        volume: 4620, qNeedTotal: 1155.00, pumpsCount: 2,
+        dolRunHours: 2.42, dolIdleHours: 1.58, dolQPerPump: 954, dolPPerPump: 32.1, a1: 167.64,
+        vsdQPerPump: 577.50, speedRatio: 0.61, n2: 888, a2: 64.12, deltaA: 103.52,
+        recommendBypass: false,
+        note: 'Giảm tốc độ xuống 888 v/p (61%), công suất giảm theo lập phương tốc độ → Tiết kiệm 103,52 kWh.'
+      },
+      {
+        id: 'TH3', label: 'TH3 (11h-13h)', timeRange: '11h - 13h', hours: 3.0,
+        volume: 5680, qNeedTotal: 1893.33, pumpsCount: 2,
+        dolRunHours: 2.98, dolIdleHours: 0.02, dolQPerPump: 954, dolPPerPump: 32.1, a1: 191.51,
+        vsdQPerPump: 946.67, speedRatio: 0.99, n2: 1440, a2: 205.57, deltaA: -14.06,
+        recommendBypass: true,
+        note: 'Lưu lượng đạt 99,2% định mức; đóng Contactor Bypass trực tiếp lưới giúp loại bỏ 14,06 kWh tổn thất VSD.'
+      },
+      {
+        id: 'TH4', label: 'TH4 (14h-16h)', timeRange: '14h - 16h', hours: 3.0,
+        volume: 3405, qNeedTotal: 1135.00, pumpsCount: 2,
+        dolRunHours: 1.78, dolIdleHours: 1.22, dolQPerPump: 954, dolPPerPump: 32.1, a1: 121.25,
+        vsdQPerPump: 567.50, speedRatio: 0.59, n2: 858, a2: 43.51, deltaA: 77.74,
+        recommendBypass: false,
+        note: 'Buổi chiều thấp tải, điều tốc xuống 858 v/p (59%) → Tiết kiệm 77,74 kWh so với chạy-dừng DOL.'
+      },
+      {
+        id: 'TH5', label: 'TH5 (17h-20h)', timeRange: '17h - 20h', hours: 4.0,
+        volume: 7590, qNeedTotal: 1897.50, pumpsCount: 2,
+        dolRunHours: 3.98, dolIdleHours: 0.02, dolQPerPump: 954, dolPPerPump: 32.1, a1: 255.77,
+        vsdQPerPump: 948.75, speedRatio: 0.99, n2: 1440, a2: 274.09, deltaA: -18.32,
+        recommendBypass: true,
+        note: 'Giờ cao điểm tối (7.590 m³), tải đạt 99,4% định mức → Chuyển sang Bypass lưới loại bỏ 18,32 kWh tổn thất VSD.'
+      },
+      {
+        id: 'TH6', label: 'TH6 (21h-1h)', timeRange: '21h - 1h', hours: 5.0,
+        volume: 5625, qNeedTotal: 1125.00, pumpsCount: 2,
+        dolRunHours: 2.95, dolIdleHours: 2.05, dolQPerPump: 954, dolPPerPump: 32.1, a1: 208.80,
+        vsdQPerPump: 562.50, speedRatio: 0.59, n2: 858, a2: 72.52, deltaA: 136.28,
+        recommendBypass: false,
+        note: 'Khung giờ đêm 5h, giảm tốc còn 858 v/p (59%) → Tiết kiệm lớn nhất ngày (+136,28 kWh).'
+      },
+      {
+        id: 'TH7', label: 'TH7 (2h-3h)', timeRange: '2h - 3h', hours: 2.0,
+        volume: 1600, qNeedTotal: 800.00, pumpsCount: 1,
+        dolRunHours: 1.52, dolIdleHours: 0.48, dolQPerPump: 1050, dolPPerPump: 32.5, a1: 50.59,
+        vsdQPerPump: 800.00, speedRatio: 0.76, n2: 1106, a2: 31.39, deltaA: 19.20,
+        recommendBypass: false,
+        note: 'Rạng sáng lưu lượng thấp (800 m³/h), chỉ vận hành 01 bơm ở 1.106 v/p (76%) → Tiết kiệm 19,20 kWh.'
+      }
+    ];
+
+    const EQ_11_DETAILS = [
+      { id: 1, name: "Ống dẫn nước thải vào", desc: "Tiếp nhận dòng chảy áp lực từ tuyến ống đẩy trạm bơm SPS14 vào bể điều hòa.", pos3D: [-8.6, 3.6, 0.0] },
+      { id: 2, name: "Song chắn rác thô", desc: "Ngăn phân phối đầu vào giữ lại tạp chất thô còn sót và phân đều dòng chảy.", pos3D: [-7.3, 3.3, 0.0] },
+      { id: 3, name: "Hệ thống ống phân phối khí", desc: "Mạng ống xương cá PVC/HDPE dẫn khí nén từ máy thổi khí BL-201A/B xuống đáy bể.", pos3D: [-3.5, 0.6, 0.0] },
+      { id: 4, name: "Đĩa phân phối khí", desc: "Dàn đĩa sục khí bọt thô/trung bình khuấy trộn đều (3–10 m³ khí/m².h), chống lắng cặn.", pos3D: [-2.0, 0.8, 1.1] },
+      { id: 5, name: "Bơm chìm nước thải (P-201A/B)", desc: "01 bơm hoạt động + 01 bơm dự phòng đặt cuối bể điều hòa cấp nước ổn định sang Aerotank.", pos3D: [1.6, 1.3, 0.0] },
+      { id: 6, name: "Thang inox", desc: "Thang thép không gỉ SUS304 gắn thành bể phục vụ kiểm tra, bảo trì định kỳ.", pos3D: [0.3, 2.8, 1.7] },
+      { id: 7, name: "Cảm biến mức nước (LIT-201)", desc: "Cảm biến siêu âm đo cao độ mực nước (0–4,5 m) truyền tín hiệu 4–20mA về PLC.", pos3D: [-2.8, 4.9, -1.2] },
+      { id: 8, name: "Ống tràn sự cố", desc: "Đặt tại cao trình tràn H = 4,5 m thoát nước khẩn cấp khi mực nước vượt ngưỡng LSHH.", pos3D: [2.7, 3.9, -1.0] },
+      { id: 9, name: "Ống xả cặn", desc: "Bố trí tại rốn thu đáy bể kèm van khóa để xả bùn cặn định kỳ.", pos3D: [-3.0, 0.3, 2.2] },
+      { id: 10, name: "Ống thông hơi", desc: "Thoát khí và cân bằng áp suất không khí trong bể điều hòa.", pos3D: [-7.6, 5.2, -1.4] },
+      { id: 11, name: "Lan can an toàn", desc: "Hệ thống lan can bảo hộ màu vàng bao quanh sàn thao tác trên đỉnh bể.", pos3D: [0.8, 5.1, 1.9] }
+    ];
+
+    // =========================================================================
+    // 2. TRẠNG THÁI VẬN HÀNH HỆ THỐNG SCADA 3D
+    // =========================================================================
+    const state = {
+      mode: 'AUTO',              // 'AUTO' | 'MANUAL'
+      driveMode: 'VSD_BYPASS',   // 'DOL' | 'VSD' | 'VSD_BYPASS'
+      activeCaseId: 'TH1',       // 'TH1'..'TH7' | 'AUTO_24H' | 'CUSTOM'
+      auto24hIndex: 0,
+      auto24hCaseTimerSec: 0,
+      dolCyclePhaseSec: 0,
+      simSpeed: 1,
+      simElapsedSec: 0,
+      controlsLocked: false,
+      show3DLabels: true,
+      showEqPins: true,
+      inspectorCollapsed: false,
+      selectedTag: 'SPS14_STATION',
+      highlightedEqDetail: null,
+      activeModalTab: 'TAB_VSD',
+
+      qIn: 1905.0,
+      scrRunning: true,
+
+      // Ngăn thu SPS14 (V_max = 100 m3, H_max = 4.0 m)
+      sps14: {
+        vMax: 100,
+        hMax: 4.0,
+        vol: 56.0,
+        qOut: 1908,
+        totalKw: 64.2
+      },
+
+      // Bể Điều Hòa EQ-201 (V_max = 3.200 m3, H_max = 4.5 m, L/B = 2.5)
+      eq: {
+        vMax: 3200,
+        hMax: 4.5,
+        lbRatio: 2.5,
+        vol: 2560.0,
+        qOut: 1426,
+        overflowActive: false
+      },
+
+      // Cụm 4 & 5: Aerotank, Bể Lắng, Khử trùng & CEMS
+      aero: {
+        doVal: 2.45,
+        mlssVal: 3250
+      },
+      clarifier: {
+        rasFlow: 713,
+        wasFlow: 24
+      },
+      effluent: {
+        qOut: 1422,
+        cl2: 0.35,
+        cod: 38.0,
+        bod: 18.0,
+        tss: 22.0,
+        nh4: 2.8,
+        coliform: 1800,
+        ph: 7.20
+      },
+
+      // Danh sách thiết bị cơ điện điều khiển được
+      devices: {
+        P101: {
+          tag: 'P-101A', name: 'Bơm chìm nước thải SPS14 #1 (VSD-101 / KM-BP1)', stage: 'Cụm 2 — Ngăn thu SPS14',
+          powerKw: 34, ratedFlow: 954, running: true, fault: false, driveState: 'BYPASS',
+          rpm: 1455, freqHz: 50.0, flowM3h: 954.0, activeKw: 32.1, currentA: 61.0
+        },
+        P102: {
+          tag: 'P-101B', name: 'Bơm chìm nước thải SPS14 #2 (VSD-102 / KM-BP2)', stage: 'Cụm 2 — Ngăn thu SPS14',
+          powerKw: 34, ratedFlow: 954, running: true, fault: false, driveState: 'BYPASS',
+          rpm: 1455, freqHz: 50.0, flowM3h: 954.0, activeKw: 32.1, currentA: 61.0
+        },
+        P103: {
+          tag: 'P-101C', name: 'Bơm chìm nước thải SPS14 #3 (Dự phòng nóng)', stage: 'Cụm 2 — Ngăn thu SPS14',
+          powerKw: 34, ratedFlow: 954, running: false, fault: false, driveState: 'STBY',
+          rpm: 0, freqHz: 0.0, flowM3h: 0.0, activeKw: 0.0, currentA: 0.0
+        },
+        BL201A: {
+          tag: 'BL-201A', name: 'Máy thổi khí Bể điều hòa #1', stage: 'Cụm 3 — Bể Điều Hòa EQ-201',
+          powerKw: 22, ratedFlow: 950, running: true, fault: false, driveState: 'RUN',
+          rpm: 1460, freqHz: 50.0, flowM3h: 950, activeKw: 19.5, currentA: 36.8
+        },
+        BL201B: {
+          tag: 'BL-201B', name: 'Máy thổi khí Bể điều hòa #2 (Dự phòng)', stage: 'Cụm 3 — Bể Điều Hòa EQ-201',
+          powerKw: 22, ratedFlow: 950, running: false, fault: false, driveState: 'STBY',
+          rpm: 0, freqHz: 0.0, flowM3h: 0, activeKw: 0.0, currentA: 0.0
+        },
+        P201A: {
+          tag: 'P-201A', name: 'Bơm chìm nâng nước thải EQ #1 (Chi tiết 05)', stage: 'Cụm 3 — Bể Điều Hòa EQ-201',
+          powerKw: 37, ratedFlow: 1426, running: true, fault: false, driveState: 'VSD',
+          rpm: 1410, freqHz: 48.5, flowM3h: 1426, activeKw: 33.4, currentA: 63.2
+        },
+        P201B: {
+          tag: 'P-201B', name: 'Bơm chìm nâng nước thải EQ #2 (Chi tiết 05)', stage: 'Cụm 3 — Bể Điều Hòa EQ-201',
+          powerKw: 37, ratedFlow: 1426, running: false, fault: false, driveState: 'STBY',
+          rpm: 0, freqHz: 0.0, flowM3h: 0, activeKw: 0.0, currentA: 0.0
+        },
+        BL301A: {
+          tag: 'BL-301A', name: 'Máy thổi khí sinh học Aerotank #1', stage: 'Cụm 4 — Bể Aerotank AT-301',
+          powerKw: 75, ratedFlow: 3200, running: true, fault: false, driveState: 'RUN',
+          rpm: 1475, freqHz: 50.0, flowM3h: 3200, activeKw: 68.0, currentA: 124.5
+        },
+        RAS401: {
+          tag: 'RAS-401', name: 'Bơm tuần hoàn bùn hoạt tính (RAS)', stage: 'Cụm 4 — Bể Lắng ST-401',
+          powerKw: 15, ratedFlow: 750, running: true, fault: false, driveState: 'RUN',
+          rpm: 1380, freqHz: 47.4, flowM3h: 713, activeKw: 12.8, currentA: 24.1
+        },
+        WAS402: {
+          tag: 'WAS-402', name: 'Bơm xả bùn dư (WAS)', stage: 'Cụm 4 — Bể Lắng ST-401',
+          powerKw: 5.5, ratedFlow: 40, running: true, fault: false, driveState: 'RUN',
+          rpm: 1050, freqHz: 36.0, flowM3h: 24, activeKw: 3.1, currentA: 6.2
+        },
+        D501: {
+          tag: 'D-501', name: 'Bơm định lượng Chlorine khử trùng', stage: 'Cụm 5 — Bể Khử Trùng CT-501',
+          powerKw: 0.55, ratedFlow: 0.02, running: true, fault: false, driveState: 'RUN',
+          rpm: 1400, freqHz: 50.0, flowM3h: 0.012, activeKw: 0.45, currentA: 1.3
+        }
+      }
+    };
+
+    // =========================================================================
+    // 3. KHỞI TẠO CẢNH 3D WEBGL (THREE.JS r128) & BỘ ĐIỀU KHIỂN CAMERA MƯỢT MÀ
+    // =========================================================================
+    let scene, camera, renderer;
+    let raycaster, pointerDownPos = { x: 0, y: 0 };
+    const interactiveMeshes = [];
+
+    // Tham chiếu các đối tượng 3D động để cập nhật mỗi khung hình
+    const sceneRefs = {
+      scrRake: null,
+      spsWaterMesh: null,
+      spsSonarBeam: null,
+      spsPumps: {},      // { P101: { impeller, ringMat, pipeMat }, ... }
+      vsdLeds: {},       // { VSD1, VSD2, KMBP1, KMBP2 }
+      eqWaterMesh: null,
+      eqBubbles: [],
+      eqDetailMeshes: {},
+      aeroWaterMesh: null,
+      aeroBubbles: [],
+      clarifierBridge: null,
+      flowParticles: []  // { mesh, points, speedFactor, activeFn }
+    };
+
+    // Trạng thái Camera Spherical Orbit + Pan + Damping
+    const camCtrl = {
+      target: new THREE.Vector3(-2, 2.2, 0),
+      desiredTarget: new THREE.Vector3(-2, 2.2, 0),
+      spherical: new THREE.Spherical(56, Math.PI * 0.34, 0.18),
+      desiredSpherical: new THREE.Spherical(56, Math.PI * 0.34, 0.18),
+      autoOrbit: false,
+      isDragging: false,
+      dragMode: 'ORBIT', // 'ORBIT' | 'PAN'
+      prevPointer: { x: 0, y: 0 },
+      pinchDist: 0
+    };
+
+    const CAMERA_PRESETS = {
+      OVERVIEW: { target: [-1, 2.2, 0], radius: 56, phi: Math.PI * 0.34, theta: 0.18 },
+      SPS14:    { target: [-19, 2.5, 1.5], radius: 22, phi: Math.PI * 0.35, theta: -0.35 },
+      EQ:       { target: [-3, 2.4, 0], radius: 20, phi: Math.PI * 0.38, theta: 0.08 },
+      BIO:      { target: [16, 2.2, 0], radius: 23, phi: Math.PI * 0.35, theta: 0.25 },
+      CEMS:     { target: [33, 2.2, 0], radius: 20, phi: Math.PI * 0.36, theta: 0.32 }
+    };
+
+    function initThreeScene() {
+      const container = document.getElementById('webgl-container');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x060b16);
+      scene.fog = new THREE.FogExp2(0x060b16, 0.0068);
+
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 350);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      container.appendChild(renderer.domElement);
+
+      raycaster = new THREE.Raycaster();
+
+      setupLights();
+      buildEnvironmentAndRoads();
+      buildStage1_InletAndScreen();
+      buildStage2_SPS14AndVsdHouse();
+      buildStage3_EqualizationTank11Details();
+      buildStage4_AerotankAndClarifier();
+      buildStage5_DisinfectionAndCEMS();
+      buildProcessPipesAndFlowParticles();
+      setupCameraEvents(renderer.domElement);
+
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    function setupLights() {
+      const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x0f172a, 0.72);
+      hemiLight.position.set(0, 40, 0);
+      scene.add(hemiLight);
+
+      const dirLight = new THREE.DirectionalLight(0xf8fafc, 1.05);
+      dirLight.position.set(28, 46, 32);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 2048;
+      dirLight.shadow.mapSize.height = 2048;
+      dirLight.shadow.camera.near = 5;
+      dirLight.shadow.camera.far = 140;
+      const d = 52;
+      dirLight.shadow.camera.left = -d;
+      dirLight.shadow.camera.right = d;
+      dirLight.shadow.camera.top = d;
+      dirLight.shadow.camera.bottom = -d;
+      dirLight.shadow.bias = -0.0005;
+      scene.add(dirLight);
+
+      // Đèn nhấn tại từng khu vực công nghệ
+      const addAccentLight = (x, y, z, color, intensity, dist) => {
+        const pt = new THREE.PointLight(color, intensity, dist);
+        pt.position.set(x, y, z);
+        scene.add(pt);
+      };
+      addAccentLight(-19, 6.5, 4, 0x34d399, 0.9, 22);  // SPS14 & Tủ VSD
+      addAccentLight(-3, 7.5, 2, 0x38bdf8, 0.95, 24);  // Bể Điều Hòa
+      addAccentLight(16, 7.5, 2, 0xfbbf24, 0.85, 24);  // Aerotank & Lắng
+      addAccentLight(33, 6.5, 2, 0x2dd4bf, 0.85, 20);  // Khử trùng & CEMS
+    }
+
+    function registerClickable(mesh, tag, eqDetailId = null) {
+      mesh.userData.scadaTag = tag;
+      if (eqDetailId !== null) mesh.userData.eqDetailId = eqDetailId;
+      interactiveMeshes.push(mesh);
+    }
+
+    function buildEnvironmentAndRoads() {
+      // Nền đất rộng bên ngoài
+      const groundGeo = new THREE.PlaneGeometry(260, 260);
+      const groundMat = new THREE.MeshStandardMaterial({ color: 0x09111e, roughness: 0.92, metalness: 0.05 });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -0.05;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // Lưới kỹ thuật mảnh trên nền
+      const gridHelper = new THREE.GridHelper(160, 80, 0x1e293b, 0x0f172a);
+      gridHelper.position.y = -0.03;
+      scene.add(gridHelper);
+
+      // Sân bê tông khuôn viên nhà máy (92m x 34m)
+      const padGeo = new THREE.BoxGeometry(92, 0.16, 34);
+      const padMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85, metalness: 0.08 });
+      const pad = new THREE.Mesh(padGeo, padMat);
+      pad.position.set(0, 0.02, 0);
+      pad.receiveShadow = true;
+      scene.add(pad);
+
+      // Đường nội bộ chạy dọc phía trước nhà máy
+      const roadGeo = new THREE.BoxGeometry(90, 0.04, 4.2);
+      const roadMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+      const road = new THREE.Mesh(roadGeo, roadMat);
+      road.position.set(0, 0.11, 13.5);
+      road.receiveShadow = true;
+      scene.add(road);
+
+      // Vạch kẻ đường đứt đoạn màu vàng
+      const dashGeo = new THREE.BoxGeometry(2.2, 0.05, 0.14);
+      const dashMat = new THREE.MeshBasicMaterial({ color: 0xeab308 });
+      for (let x = -40; x <= 40; x += 5) {
+        const dash = new THREE.Mesh(dashGeo, dashMat);
+        dash.position.set(x, 0.115, 13.5);
+        scene.add(dash);
+      }
+
+      // Hàng rào bảo vệ xung quanh khuôn viên & cột đèn chiếu sáng
+      const postGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.2, 8);
+      const postMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.6, roughness: 0.4 });
+      const railGeoX = new THREE.BoxGeometry(92, 0.08, 0.08);
+      const railGeoZ = new THREE.BoxGeometry(0.08, 0.08, 34);
+
+      [-16.8, 16.8].forEach(z => {
+        const topRail = new THREE.Mesh(railGeoX, postMat);
+        topRail.position.set(0, 2.0, z);
+        scene.add(topRail);
+        for (let x = -45.5; x <= 45.5; x += 4.55) {
+          const post = new THREE.Mesh(postGeo, postMat);
+          post.position.set(x, 1.1, z);
+          scene.add(post);
+        }
+      });
+
+      [-45.8, 45.8].forEach(x => {
+        const sideRail = new THREE.Mesh(railGeoZ, postMat);
+        sideRail.position.set(x, 2.0, 0);
+        scene.add(sideRail);
+      });
+
+      // Cột đèn chiếu sáng công nghiệp dọc đường nội bộ
+      const lampPoleGeo = new THREE.CylinderGeometry(0.09, 0.14, 7.2, 10);
+      const bulbGeo = new THREE.BoxGeometry(0.7, 0.14, 0.35);
+      const bulbMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
+      for (let x = -36; x <= 36; x += 18) {
+        const pole = new THREE.Mesh(lampPoleGeo, postMat);
+        pole.position.set(x, 3.6, 11.0);
+        pole.castShadow = true;
+        scene.add(pole);
+
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.2), postMat);
+        arm.position.set(x, 7.1, 11.5);
+        scene.add(arm);
+
+        const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+        bulb.position.set(x, 7.05, 12.0);
+        scene.add(bulb);
+      }
+    }
+
+    // Helper tạo bể bê tông vách kính cắt mặt trước để nhìn xuyên mực nước & thiết bị
+    function createCutawayTank(x, y, z, w, h, d, tag) {
+      const group = new THREE.Group();
+      group.position.set(x, y, z);
+
+      const wallThick = 0.28;
+      const concreteMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.78, metalness: 0.12 });
+      const glassMat = new THREE.MeshPhysicalMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.18,
+        roughness: 0.15,
+        metalness: 0.1,
+        depthWrite: false
+      });
+
+      // Đáy bể
+      const bottom = new THREE.Mesh(new THREE.BoxGeometry(w, wallThick, d), concreteMat);
+      bottom.position.y = wallThick / 2;
+      bottom.receiveShadow = true;
+      group.add(bottom);
+
+      // Tường sau
+      const backWall = new THREE.Mesh(new THREE.BoxGeometry(w, h, wallThick), concreteMat);
+      backWall.position.set(0, h / 2, -d / 2 + wallThick / 2);
+      backWall.castShadow = true;
+      backWall.receiveShadow = true;
+      group.add(backWall);
+
+      // Tường trái & phải
+      const sideGeo = new THREE.BoxGeometry(wallThick, h, d);
+      const leftWall = new THREE.Mesh(sideGeo, concreteMat);
+      leftWall.position.set(-w / 2 + wallThick / 2, h / 2, 0);
+      leftWall.castShadow = true;
+      group.add(leftWall);
+
+      const rightWall = new THREE.Mesh(sideGeo, concreteMat);
+      rightWall.position.set(w / 2 - wallThick / 2, h / 2, 0);
+      rightWall.castShadow = true;
+      group.add(rightWall);
+
+      // Mặt trước vách kính quan sát
+      const frontGlass = new THREE.Mesh(new THREE.BoxGeometry(w - wallThick * 2, h - wallThick, 0.08), glassMat);
+      frontGlass.position.set(0, h / 2 + wallThick / 2, d / 2 - 0.05);
+      group.add(frontGlass);
+
+      // Viền khung thép trên miệng kính
+      const topFrame = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, 0.16), concreteMat);
+      topFrame.position.set(0, h, d / 2 - 0.08);
+      group.add(topFrame);
+
+      registerClickable(backWall, tag);
+      registerClickable(bottom, tag);
+      scene.add(group);
+      return group;
+    }
+
+    // -------------------------------------------------------------------------
+    // CỤM 1: TIẾP NHẬN & SONG CHẮN RÁC THÔ (SCR-101)
+    // -------------------------------------------------------------------------
+    function buildStage1_InletAndScreen() {
+      const baseX = -35;
+      createCutawayTank(baseX, 0.1, 0, 5.2, 3.2, 3.6, 'STAGE1_SCR');
+
+      // Khối nước trong mương tiếp nhận
+      const waterMat = new THREE.MeshStandardMaterial({
+        color: 0x0284c7, transparent: true, opacity: 0.65, roughness: 0.25
+      });
+      const water = new THREE.Mesh(new THREE.BoxGeometry(4.6, 2.0, 3.1), waterMat);
+      water.position.set(baseX, 1.25, 0);
+      scene.add(water);
+
+      // Song chắn rác nghiêng 75 độ
+      const barGroup = new THREE.Group();
+      barGroup.position.set(baseX + 0.3, 1.7, 0);
+      barGroup.rotation.z = -0.26;
+      const barMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.25 });
+      for (let z = -1.2; z <= 1.2; z += 0.24) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.9, 0.05), barMat);
+        bar.position.z = z;
+        barGroup.add(bar);
+      }
+      scene.add(barGroup);
+
+      // Cơ cấu cào rác cơ khí động SCR-101
+      const rakeGroup = new THREE.Group();
+      rakeGroup.position.set(baseX + 0.15, 1.4, 0);
+      const rakeHead = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.18, 2.6),
+        new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.5, roughness: 0.4 })
+      );
+      rakeGroup.add(rakeHead);
+      registerClickable(rakeHead, 'STAGE1_SCR');
+      scene.add(rakeGroup);
+      sceneRefs.scrRake = rakeGroup;
+
+      // Thùng chứa rác & Đồng hồ lưu lượng FIT-101
+      const bin = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.9, 1.8),
+        new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.4 })
+      );
+      bin.position.set(baseX + 1.3, 3.55, 0);
+      scene.add(bin);
+
+      const fitBox = new THREE.Mesh(
+        new THREE.BoxGeometry(0.65, 0.65, 0.65),
+        new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, emissiveIntensity: 0.4 })
+      );
+      fitBox.position.set(baseX - 3.3, 2.6, 0);
+      registerClickable(fitBox, 'STAGE1_SCR');
+      scene.add(fitBox);
+    }
+
+    // -------------------------------------------------------------------------
+    // CỤM 2: NGĂN THU TRẠM BƠM SPS14 (V = 100 m³) & NHÀ ĐIỀU KHIỂN BIẾN TẦN
+    // -------------------------------------------------------------------------
+    function buildStage2_SPS14AndVsdHouse() {
+      const wellX = -21.5;
+      const wellZ = 0;
+      createCutawayTank(wellX, 0.1, wellZ, 7.6, 4.2, 5.2, 'SPS14_WELL');
+
+      // Khối nước động trong ngăn thu SPS14
+      const spsWaterGeo = new THREE.BoxGeometry(7.0, 1.0, 4.6);
+      const spsWaterMat = new THREE.MeshStandardMaterial({
+        color: 0x0ea5e9, transparent: true, opacity: 0.62, roughness: 0.2, metalness: 0.05
+      });
+      const spsWater = new THREE.Mesh(spsWaterGeo, spsWaterMat);
+      spsWater.position.set(wellX, 1.5, wellZ);
+      scene.add(spsWater);
+      sceneRefs.spsWaterMesh = spsWater;
+
+      // Cảm biến mức siêu âm LIT-101 trên đỉnh bể
+      const sensorHead = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.22, 0.28, 0.45, 16),
+        new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.5 })
+      );
+      sensorHead.position.set(wellX + 2.6, 4.35, wellZ - 1.4);
+      registerClickable(sensorHead, 'SPS14_WELL');
+      scene.add(sensorHead);
+
+      const beamGeo = new THREE.CylinderGeometry(0.03, 0.18, 1.0, 12);
+      const beamMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35 });
+      const beam = new THREE.Mesh(beamGeo, beamMat);
+      beam.position.set(wellX + 2.6, 3.2, wellZ - 1.4);
+      scene.add(beam);
+      sceneRefs.spsSonarBeam = beam;
+
+      // Cụm 03 Máy bơm chìm P-101A, P-101B, P-101C (34 kW)
+      const pumpConfigs = [
+        { key: 'P101', x: wellX - 2.1, z: wellZ },
+        { key: 'P102', x: wellX,       z: wellZ },
+        { key: 'P103', x: wellX + 2.1, z: wellZ }
+      ];
+
+      // Ống góp chung ngang phía trên ngăn thu
+      const headerPipe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.22, 0.22, 6.2, 16),
+        new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.5, roughness: 0.3 })
+      );
+      headerPipe.rotation.z = Math.PI / 2;
+      headerPipe.position.set(wellX + 0.6, 4.55, wellZ);
+      scene.add(headerPipe);
+
+      pumpConfigs.forEach(cfg => {
+        const pGroup = new THREE.Group();
+        pGroup.position.set(cfg.x, 0.4, cfg.z);
+
+        // Thân động cơ bơm chìm
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, metalness: 0.65, roughness: 0.3 });
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 1.25, 20), bodyMat);
+        body.position.y = 0.68;
+        body.castShadow = true;
+        registerClickable(body, cfg.key);
+        pGroup.add(body);
+
+        // Vòng đèn LED trạng thái 3D trên đỉnh bơm
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+        const statusRing = new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.06, 10, 24), ringMat);
+        statusRing.rotation.x = Math.PI / 2;
+        statusRing.position.y = 1.25;
+        pGroup.add(statusRing);
+
+        // Cánh bơm / trục quay 3D trực quan
+        const impGroup = new THREE.Group();
+        impGroup.position.set(0, 1.42, 0);
+        const bladeMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.08, 0.12), bladeMat);
+        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.75), bladeMat);
+        impGroup.add(b1, b2);
+        pGroup.add(impGroup);
+
+        // Ống đẩy đứng nối lên ống góp chung
+        const pipeMat = new THREE.MeshStandardMaterial({
+          color: 0x10b981, transparent: true, opacity: 0.72, roughness: 0.25
+        });
+        const riser = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3.4, 14), pipeMat);
+        riser.position.set(0.32, 2.45, 0);
+        pGroup.add(riser);
+
+        scene.add(pGroup);
+        sceneRefs.spsPumps[cfg.key] = { impeller: impGroup, ringMat, pipeMat };
+      });
+
+      // NHÀ ĐIỀU KHIỂN ĐIỆN & TỦ BIẾN TẦN SIEMENS MM430 + CONTACTOR BYPASS
+      const houseX = -21.5;
+      const houseZ = -6.8;
+      const houseGroup = new THREE.Group();
+      houseGroup.position.set(houseX, 0.1, houseZ);
+
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6, metalness: 0.3 });
+
+      // Tường sau, tường bên, mái nhà điều khiển (mở mặt trước hướng về phía camera để quan sát tủ biến tần)
+      const hBack = new THREE.Mesh(new THREE.BoxGeometry(7.6, 3.8, 0.25), wallMat);
+      hBack.position.set(0, 1.9, -2.1);
+      hBack.castShadow = true;
+      houseGroup.add(hBack);
+
+      const hLeft = new THREE.Mesh(new THREE.BoxGeometry(0.25, 3.8, 4.4), wallMat);
+      hLeft.position.set(-3.7, 1.9, 0);
+      houseGroup.add(hLeft);
+
+      const hRight = new THREE.Mesh(new THREE.BoxGeometry(0.25, 3.8, 4.4), wallMat);
+      hRight.position.set(3.7, 1.9, 0);
+      houseGroup.add(hRight);
+
+      const hRoof = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.28, 4.9), roofMat);
+      hRoof.position.set(0, 3.9, 0);
+      hRoof.castShadow = true;
+      houseGroup.add(hRoof);
+
+      // Tạo 4 tủ điện bên trong: VSD-101, KM-BP1, VSD-102, KM-BP2
+      const createCabinet = (cx, labelTag, width, colorHex) => {
+        const cab = new THREE.Mesh(
+          new THREE.BoxGeometry(width, 2.5, 0.9),
+          new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.45, roughness: 0.35 })
+        );
+        cab.position.set(cx, 1.35, -0.8);
+        cab.castShadow = true;
+        registerClickable(cab, labelTag);
+        houseGroup.add(cab);
+
+        const ledMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+        const ledPanel = new THREE.Mesh(new THREE.BoxGeometry(width * 0.65, 0.42, 0.08), ledMat);
+        ledPanel.position.set(cx, 2.05, -0.32);
+        registerClickable(ledPanel, labelTag);
+        houseGroup.add(ledPanel);
+        return ledMat;
+      };
+
+      sceneRefs.vsdLeds.VSD1 = createCabinet(-2.35, 'VSD_PANEL', 1.35, 0x334155);
+      sceneRefs.vsdLeds.KMBP1 = createCabinet(-0.85, 'VSD_PANEL', 1.05, 0x1e3a5f);
+      sceneRefs.vsdLeds.VSD2 = createCabinet(0.75, 'VSD_PANEL', 1.35, 0x334155);
+      sceneRefs.vsdLeds.KMBP2 = createCabinet(2.25, 'VSD_PANEL', 1.05, 0x1e3a5f);
+
+      scene.add(houseGroup);
+    }
+
+    // -------------------------------------------------------------------------
+    // CỤM 3: BỂ ĐIỀU HÒA (EQ-201: V = 3.200 m³, H = 4,5 m, L/B = 2,5) - 11 CHI TIẾT
+    // -------------------------------------------------------------------------
+    function buildStage3_EqualizationTank11Details() {
+      const eqX = -3.0;
+      const eqZ = 0;
+      const eqW = 11.2; // Tỷ lệ L/B = 11.2 / 4.5 ≈ 2.5
+      const eqH = 4.6;
+      const eqD = 4.5;
+
+      createCutawayTank(eqX, 0.1, eqZ, eqW, eqH, eqD, 'EQ_TANK');
+
+      // Khối nước động trong Bể điều hòa
+      const eqWater = new THREE.Mesh(
+        new THREE.BoxGeometry(eqW - 0.6, 1.0, eqD - 0.55),
+        new THREE.MeshStandardMaterial({ color: 0x0284c7, transparent: true, opacity: 0.58, roughness: 0.22 })
+      );
+      eqWater.position.set(eqX, 2.0, eqZ);
+      scene.add(eqWater);
+      sceneRefs.eqWaterMesh = eqWater;
+
+      // (01) Ống dẫn nước thải vào bể điều hòa
+      const pipe01 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.24, 1.6, 16),
+        new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.5 })
+      );
+      pipe01.rotation.z = Math.PI / 2;
+      pipe01.position.set(eqX - 5.6, 3.6, 0);
+      registerClickable(pipe01, 'EQ_TANK', 1);
+      scene.add(pipe01);
+      sceneRefs.eqDetailMeshes[1] = pipe01;
+
+      // (02) Song chắn rác thô / vách phân phối đầu vào
+      const screen02 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 2.4, 3.8),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.75, wireframe: false })
+      );
+      screen02.position.set(eqX - 4.3, 3.1, 0);
+      registerClickable(screen02, 'EQ_TANK', 2);
+      scene.add(screen02);
+      sceneRefs.eqDetailMeshes[2] = screen02;
+
+      // (03) Hệ thống ống phân phối khí đáy bể
+      const airHeader03 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.13, 0.13, 7.6, 14),
+        new THREE.MeshStandardMaterial({ color: 0x2563eb, metalness: 0.4 })
+      );
+      airHeader03.rotation.z = Math.PI / 2;
+      airHeader03.position.set(eqX - 0.4, 0.55, 0);
+      registerClickable(airHeader03, 'EQ_TANK', 3);
+      scene.add(airHeader03);
+      sceneRefs.eqDetailMeshes[3] = airHeader03;
+
+      // (04) Dàn 10 Đĩa phân phối khí + Hạt bọt khí 3D nổi lên mặt nước
+      const discGeo = new THREE.CylinderGeometry(0.32, 0.36, 0.1, 16);
+      const discMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, emissive: 0x1d4ed8, emissiveIntensity: 0.35 });
+      const bubbleGeo = new THREE.SphereGeometry(0.065, 8, 8);
+      const bubbleMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.8 });
+
+      for (let i = 0; i < 5; i++) {
+        const dx = eqX - 3.4 + i * 1.5;
+        [-1.0, 1.0].forEach(dz => {
+          const disc = new THREE.Mesh(discGeo, discMat);
+          disc.position.set(dx, 0.65, dz);
+          registerClickable(disc, 'EQ_TANK', 4);
+          scene.add(disc);
+          if (i === 2 && dz === 1.0) sceneRefs.eqDetailMeshes[4] = disc;
+
+          // Tạo 4 bọt khí 3D cho mỗi đĩa
+          for (let b = 0; b < 4; b++) {
+            const bub = new THREE.Mesh(bubbleGeo, bubbleMat);
+            bub.position.set(
+              dx + (Math.random() - 0.5) * 0.35,
+              0.75 + Math.random() * 2.8,
+              dz + (Math.random() - 0.5) * 0.35
+            );
+            bub.userData.baseX = bub.position.x;
+            bub.userData.baseZ = bub.position.z;
+            bub.userData.speed = 1.2 + Math.random() * 1.1;
+            scene.add(bub);
+            sceneRefs.eqBubbles.push(bub);
+          }
+        });
+      }
+
+      // Vách ngăn khoang bơm cuối bể điều hòa & (05) Cụm 02 Bơm chìm P-201A / P-201B
+      const baffle = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 3.2, 4.0),
+        new THREE.MeshStandardMaterial({ color: 0x475569 })
+      );
+      baffle.position.set(eqX + 3.6, 1.9, 0);
+      scene.add(baffle);
+
+      [-0.85, 0.85].forEach((pz, idx) => {
+        const pump05 = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.35, 0.4, 1.1, 16),
+          new THREE.MeshStandardMaterial({ color: idx === 0 ? 0x10b981 : 0x64748b, metalness: 0.6 })
+        );
+        pump05.position.set(eqX + 4.5, 0.95, pz);
+        registerClickable(pump05, idx === 0 ? 'P201A' : 'P201B', 5);
+        scene.add(pump05);
+        if (idx === 0) sceneRefs.eqDetailMeshes[5] = pump05;
+      });
+
+      // (06) Thang inox SUS304
+      const ladderGroup = new THREE.Group();
+      ladderGroup.position.set(eqX + 3.35, 2.4, 1.6);
+      const inoxMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.2 });
+      const rail1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 4.3, 8), inoxMat);
+      rail1.position.z = -0.25;
+      const rail2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 4.3, 8), inoxMat);
+      rail2.position.z = 0.25;
+      ladderGroup.add(rail1, rail2);
+      for (let ry = -1.8; ry <= 1.8; ry += 0.45) {
+        const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 8), inoxMat);
+        rung.rotation.x = Math.PI / 2;
+        rung.position.y = ry;
+        ladderGroup.add(rung);
+      }
+      registerClickable(rail1, 'EQ_TANK', 6);
+      scene.add(ladderGroup);
+      sceneRefs.eqDetailMeshes[6] = ladderGroup;
+
+      // (07) Cảm biến mức nước LIT-201
+      const lit07 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.45, 0.45, 0.45),
+        new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.5 })
+      );
+      lit07.position.set(eqX + 0.2, 4.85, -1.2);
+      registerClickable(lit07, 'EQ_TANK', 7);
+      scene.add(lit07);
+      sceneRefs.eqDetailMeshes[7] = lit07;
+
+      // (08) Ống tràn sự cố
+      const overflow08 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.18, 3.8, 12),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.4 })
+      );
+      overflow08.position.set(eqX + 5.75, 2.2, -1.1);
+      registerClickable(overflow08, 'EQ_TANK', 8);
+      scene.add(overflow08);
+      sceneRefs.eqDetailMeshes[8] = overflow08;
+
+      // (09) Ống xả cặn đáy bể
+      const drain09 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.18, 1.3, 12),
+        new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.5 })
+      );
+      drain09.rotation.x = Math.PI / 2;
+      drain09.position.set(eqX, 0.4, 2.45);
+      registerClickable(drain09, 'EQ_TANK', 9);
+      scene.add(drain09);
+      sceneRefs.eqDetailMeshes[9] = drain09;
+
+      // (10) Ống thông hơi
+      const vent10 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.14, 0.14, 1.2, 12),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.6 })
+      );
+      vent10.position.set(eqX - 4.7, 5.1, -1.5);
+      registerClickable(vent10, 'EQ_TANK', 10);
+      scene.add(vent10);
+      sceneRefs.eqDetailMeshes[10] = vent10;
+
+      // (11) Lan can an toàn màu vàng bao quanh sàn thao tác đỉnh bể
+      const railYellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.3, roughness: 0.4 });
+      const topBar11 = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.08, 0.08), railYellowMat);
+      topBar11.position.set(eqX + 2.0, 5.35, 2.05);
+      registerClickable(topBar11, 'EQ_TANK', 11);
+      scene.add(topBar11);
+      sceneRefs.eqDetailMeshes[11] = topBar11;
+
+      for (let rx = eqX - 1.3; rx <= eqX + 5.3; rx += 1.65) {
+        const post11 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.75, 8), railYellowMat);
+        post11.position.set(rx, 5.0, 2.05);
+        scene.add(post11);
+      }
+
+      // Cụm 02 Máy thổi khí BL-201A / BL-201B đặt phía sau bể điều hòa
+      [-4.8, -1.5].forEach((bx, idx) => {
+        const key = idx === 0 ? 'BL201A' : 'BL201B';
+        const blower = new THREE.Mesh(
+          new THREE.BoxGeometry(1.5, 1.25, 1.3),
+          new THREE.MeshStandardMaterial({ color: idx === 0 ? 0x059669 : 0x475569, metalness: 0.5 })
+        );
+        blower.position.set(bx, 0.8, -4.6);
+        blower.castShadow = true;
+        registerClickable(blower, key);
+        scene.add(blower);
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // CỤM 4: BỂ SINH HỌC HIẾU KHÍ AEROTANK (AT-301) & BỂ LẮNG THỨ CẤP (ST-401)
+    // -------------------------------------------------------------------------
+    function buildStage4_AerotankAndClarifier() {
+      // 1. Bể Aerotank AT-301 (X = +10.5)
+      const aeroX = 10.5;
+      createCutawayTank(aeroX, 0.1, 0, 8.8, 4.4, 4.8, 'AEROTANK');
+
+      const aeroWater = new THREE.Mesh(
+        new THREE.BoxGeometry(8.2, 3.65, 4.2),
+        new THREE.MeshStandardMaterial({ color: 0x92400e, transparent: true, opacity: 0.68, roughness: 0.35 })
+      );
+      aeroWater.position.set(aeroX, 2.15, 0);
+      scene.add(aeroWater);
+      sceneRefs.aeroWaterMesh = aeroWater;
+
+      // Bọt khí sục mịn dày đặc trong Aerotank
+      const fineBubGeo = new THREE.SphereGeometry(0.055, 6, 6);
+      const fineBubMat = new THREE.MeshBasicMaterial({ color: 0xfef3c7, transparent: true, opacity: 0.78 });
+      for (let i = 0; i < 42; i++) {
+        const fb = new THREE.Mesh(fineBubGeo, fineBubMat);
+        fb.position.set(
+          aeroX + (Math.random() - 0.5) * 7.6,
+          0.5 + Math.random() * 3.2,
+          (Math.random() - 0.5) * 3.6
+        );
+        fb.userData.speed = 1.4 + Math.random() * 1.4;
+        scene.add(fb);
+        sceneRefs.aeroBubbles.push(fb);
+      }
+
+      // Máy thổi khí BL-301A phía sau Aerotank
+      const bl301 = new THREE.Mesh(
+        new THREE.BoxGeometry(2.0, 1.5, 1.5),
+        new THREE.MeshStandardMaterial({ color: 0x059669, metalness: 0.55 })
+      );
+      bl301.position.set(aeroX, 0.9, -4.6);
+      bl301.castShadow = true;
+      registerClickable(bl301, 'BL301A');
+      scene.add(bl301);
+
+      // 2. Bể Lắng Thứ Cấp Tròn ST-401 (X = +21.5)
+      const clarX = 21.5;
+      const clarGroup = new THREE.Group();
+      clarGroup.position.set(clarX, 0.1, 0);
+
+      // Thành bể trụ tròn bán trong suốt
+      const wallCyl = new THREE.Mesh(
+        new THREE.CylinderGeometry(3.7, 3.7, 3.8, 36, 1, true),
+        new THREE.MeshPhysicalMaterial({
+          color: 0x38bdf8, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false
+        })
+      );
+      wallCyl.position.y = 1.9;
+      registerClickable(wallCyl, 'CLARIFIER');
+      clarGroup.add(wallCyl);
+
+      // Đáy bể & Lớp bùn lắng đáy
+      const clarBase = new THREE.Mesh(
+        new THREE.CylinderGeometry(3.75, 3.75, 0.3, 36),
+        new THREE.MeshStandardMaterial({ color: 0x334155 })
+      );
+      clarBase.position.y = 0.15;
+      clarGroup.add(clarBase);
+
+      const sludgeLayer = new THREE.Mesh(
+        new THREE.CylinderGeometry(3.62, 3.62, 0.9, 32),
+        new THREE.MeshStandardMaterial({ color: 0x78350f, opacity: 0.88, transparent: true })
+      );
+      sludgeLayer.position.y = 0.72;
+      clarGroup.add(sludgeLayer);
+
+      // Khối nước trong phía trên bể lắng
+      const clearWater = new THREE.Mesh(
+        new THREE.CylinderGeometry(3.62, 3.62, 2.35, 32),
+        new THREE.MeshStandardMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.52 })
+      );
+      clearWater.position.y = 2.35;
+      clarGroup.add(clearWater);
+
+      // Cầu gạt bùn trung tâm quay tròn liên tục (SC-401)
+      const bridgeGroup = new THREE.Group();
+      bridgeGroup.position.y = 3.88;
+      const bridgeBeam = new THREE.Mesh(
+        new THREE.BoxGeometry(7.3, 0.22, 0.65),
+        new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.4 })
+      );
+      const centerShaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.16, 3.4, 12),
+        new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.8 })
+      );
+      centerShaft.position.y = -1.7;
+      const scraperArm = new THREE.Mesh(
+        new THREE.BoxGeometry(6.6, 0.25, 0.12),
+        new THREE.MeshStandardMaterial({ color: 0xf59e0b })
+      );
+      scraperArm.position.y = -3.35;
+
+      bridgeGroup.add(bridgeBeam, centerShaft, scraperArm);
+      registerClickable(bridgeBeam, 'CLARIFIER');
+      clarGroup.add(bridgeGroup);
+      sceneRefs.clarifierBridge = bridgeGroup;
+
+      scene.add(clarGroup);
+
+      // Cụm Bơm tuần hoàn bùn RAS-401 & Bơm xả bùn dư WAS-402 + Bể chứa bùn
+      const rasMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.85, 0.9),
+        new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.5 })
+      );
+      rasMesh.position.set(16.0, 0.55, 4.4);
+      registerClickable(rasMesh, 'RAS401');
+      scene.add(rasMesh);
+
+      const wasMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.95, 0.8, 0.85),
+        new THREE.MeshStandardMaterial({ color: 0xb45309, metalness: 0.5 })
+      );
+      wasMesh.position.set(22.5, 0.52, 4.8);
+      registerClickable(wasMesh, 'WAS402');
+      scene.add(wasMesh);
+
+      const sludgeTank = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.6, 1.6, 2.8, 24),
+        new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.7 })
+      );
+      sludgeTank.position.set(25.2, 1.5, 5.8);
+      sludgeTank.castShadow = true;
+      scene.add(sludgeTank);
+    }
+
+    // -------------------------------------------------------------------------
+    // CỤM 5: BỂ KHỬ TRÙNG CHLORINE (CT-501) & TRẠM QUAN TRẮC CEMS (QCVN 14)
+    // -------------------------------------------------------------------------
+    function buildStage5_DisinfectionAndCEMS() {
+      const disX = 32.5;
+      createCutawayTank(disX, 0.1, 0, 6.8, 3.6, 4.4, 'DISINFECTION');
+
+      const disWater = new THREE.Mesh(
+        new THREE.BoxGeometry(6.2, 2.95, 3.8),
+        new THREE.MeshStandardMaterial({ color: 0x14b8a6, transparent: true, opacity: 0.58 })
+      );
+      disWater.position.set(disX, 1.8, 0);
+      scene.add(disWater);
+
+      // 3 Vách ngăn hướng dòng zic-zac bên trong bể khử trùng
+      const baffleMat = new THREE.MeshStandardMaterial({ color: 0x0f766e });
+      [-1.5, 0, 1.5].forEach((bx, idx) => {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.14, 3.0, 2.9), baffleMat);
+        b.position.set(disX + bx, 1.8, idx % 2 === 0 ? -0.45 : 0.45);
+        scene.add(b);
+      });
+
+      // Bồn hóa chất Chlorine & Bơm định lượng D-501
+      const chemTank = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.85, 0.85, 2.2, 20),
+        new THREE.MeshStandardMaterial({ color: 0x0d9488, roughness: 0.35 })
+      );
+      chemTank.position.set(disX - 1.5, 1.2, -4.4);
+      chemTank.castShadow = true;
+      registerClickable(chemTank, 'D501');
+      scene.add(chemTank);
+
+      const d501Pump = new THREE.Mesh(
+        new THREE.BoxGeometry(0.8, 0.75, 0.75),
+        new THREE.MeshStandardMaterial({ color: 0x10b981, metalness: 0.5 })
+      );
+      d501Pump.position.set(disX + 0.3, 0.5, -4.4);
+      registerClickable(d501Pump, 'D501');
+      scene.add(d501Pump);
+
+      // Nhà trạm quan trắc tự động CEMS (QCVN 14:2008/BTNMT) & Kênh xả đầu ra
+      const cemsHouse = new THREE.Mesh(
+        new THREE.BoxGeometry(3.2, 2.8, 3.0),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 })
+      );
+      cemsHouse.position.set(disX + 6.5, 1.5, -3.5);
+      cemsHouse.castShadow = true;
+      registerClickable(cemsHouse, 'DISINFECTION');
+      scene.add(cemsHouse);
+
+      const cemsBeacon = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 0.35, 0.2),
+        new THREE.MeshBasicMaterial({ color: 0x2dd4bf })
+      );
+      cemsBeacon.position.set(disX + 6.5, 2.5, -1.95);
+      scene.add(cemsBeacon);
+
+      // Mương xả đầu ra đạt chuẩn
+      const outfall = new THREE.Mesh(
+        new THREE.BoxGeometry(5.5, 1.2, 1.8),
+        new THREE.MeshStandardMaterial({ color: 0x14b8a6, transparent: true, opacity: 0.65 })
+      );
+      outfall.position.set(disX + 6.5, 0.7, 0);
+      scene.add(outfall);
+    }
+
+    // -------------------------------------------------------------------------
+    // ĐƯỜNG ỐNG CÔNG NGHỆ BÁN TRONG SUỐT & HẠT DÒNG CHẢY ĐỘNG (FLOW PARTICLES)
+    // -------------------------------------------------------------------------
+    function buildProcessPipesAndFlowParticles() {
+      const pipeSegments = [
+        // 1. Vào SCR-101
+        { pts: [[-41, 2.2, 0], [-37.6, 2.2, 0]], color: 0x38bdf8, radius: 0.22, activeFn: () => state.qIn > 0, speedFn: () => state.qIn / 1200 },
+        // 2. SCR-101 sang Ngăn thu SPS14
+        { pts: [[-32.4, 2.0, 0], [-25.3, 2.0, 0]], color: 0x38bdf8, radius: 0.22, activeFn: () => state.qIn > 0, speedFn: () => state.qIn / 1200 },
+        // 3. Trạm bơm SPS14 sang Bể điều hòa EQ-201
+        { pts: [[-18.0, 4.55, 0], [-12.5, 4.55, 0], [-12.5, 3.6, 0], [-8.6, 3.6, 0]], color: 0x10b981, radius: 0.24, activeFn: () => state.sps14.qOut > 0, speedFn: () => state.sps14.qOut / 1100 },
+        // 4. Bể điều hòa EQ-201 sang Aerotank AT-301
+        { pts: [[1.6, 4.3, 0], [4.5, 4.3, 0], [4.5, 3.5, 0], [6.1, 3.5, 0]], color: 0x38bdf8, radius: 0.22, activeFn: () => state.eq.qOut > 0, speedFn: () => state.eq.qOut / 1100 },
+        // 5. Aerotank sang Bể lắng ST-401
+        { pts: [[14.9, 3.4, 0], [17.8, 3.4, 0]], color: 0xf59e0b, radius: 0.22, activeFn: () => state.eq.qOut > 0, speedFn: () => 1.1 },
+        // 6. Tuần hoàn bùn RAS-401 về Aerotank
+        { pts: [[21.5, 0.5, 3.7], [21.5, 0.5, 4.4], [10.5, 0.5, 4.4], [10.5, 3.2, 2.4]], color: 0xd97706, radius: 0.14, activeFn: () => state.devices.RAS401.running && !state.devices.RAS401.fault, speedFn: () => 1.0 },
+        // 7. Bể lắng ST-401 sang Bể khử trùng CT-501
+        { pts: [[25.2, 3.3, 0], [29.1, 3.3, 0]], color: 0x06b6d4, radius: 0.20, activeFn: () => state.effluent.qOut > 0, speedFn: () => 1.1 },
+        // 8. Bể khử trùng ra kênh xả CEMS
+        { pts: [[35.9, 2.6, 0], [39.5, 2.6, 0]], color: 0x2dd4bf, radius: 0.22, activeFn: () => state.effluent.qOut > 0, speedFn: () => 1.1 }
+      ];
+
+      pipeSegments.forEach(seg => {
+        const vecPts = seg.pts.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+        const curve = new THREE.CatmullRomCurve3(vecPts, false, 'catmullrom', 0.05);
+        const tubeGeo = new THREE.TubeGeometry(curve, 36, seg.radius, 12, false);
+        const tubeMat = new THREE.MeshStandardMaterial({
+          color: seg.color, transparent: true, opacity: 0.28, roughness: 0.2, depthWrite: false
+        });
+        const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
+        scene.add(tubeMesh);
+
+        // Tạo các hạt dòng chảy bên trong ống
+        const numParticles = 10;
+        const pGeo = new THREE.SphereGeometry(seg.radius * 0.68, 8, 8);
+        const pMat = new THREE.MeshBasicMaterial({ color: seg.color });
+        for (let i = 0; i < numParticles; i++) {
+          const pm = new THREE.Mesh(pGeo, pMat);
+          scene.add(pm);
+          sceneRefs.flowParticles.push({
+            mesh: pm,
+            curve,
+            t: i / numParticles,
+            activeFn: seg.activeFn,
+            speedFn: seg.speedFn
+          });
+        }
+      });
+    }
+
+    // =========================================================================
+    // 4. ĐIỀU KHIỂN CAMERA QUỸ ĐẠO (CHUỘT + CẢM ỨNG) & RAYCASTING CHỌN THIẾT BỊ
+    // =========================================================================
+    function setupCameraEvents(domEl) {
+      domEl.addEventListener('contextmenu', e => e.preventDefault());
+
+      domEl.addEventListener('pointerdown', e => {
+        camCtrl.isDragging = true;
+        camCtrl.autoOrbit = false;
+        updateAutoOrbitButtonUI();
+        pointerDownPos = { x: e.clientX, y: e.clientY };
+        camCtrl.prevPointer = { x: e.clientX, y: e.clientY };
+        camCtrl.dragMode = (e.button === 2 || e.shiftKey) ? 'PAN' : 'ORBIT';
+      });
+
+      window.addEventListener('pointermove', e => {
+        if (!camCtrl.isDragging) return;
+        const dx = e.clientX - camCtrl.prevPointer.x;
+        const dy = e.clientY - camCtrl.prevPointer.y;
+        camCtrl.prevPointer = { x: e.clientX, y: e.clientY };
+
+        if (camCtrl.dragMode === 'ORBIT') {
+          camCtrl.desiredSpherical.theta -= dx * 0.0065;
+          camCtrl.desiredSpherical.phi = Math.max(0.18, Math.min(Math.PI * 0.47, camCtrl.desiredSpherical.phi - dy * 0.0065));
+        } else {
+          // Pan mượt theo hướng nhìn camera
+          const panScale = camCtrl.desiredSpherical.radius * 0.0014;
+          const forward = new THREE.Vector3();
+          camera.getWorldDirection(forward);
+          forward.y = 0;
+          forward.normalize();
+          const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+          camCtrl.desiredTarget.addScaledVector(right, -dx * panScale);
+          camCtrl.desiredTarget.addScaledVector(forward, dy * panScale);
+          camCtrl.desiredTarget.x = Math.max(-45, Math.min(45, camCtrl.desiredTarget.x));
+          camCtrl.desiredTarget.z = Math.max(-22, Math.min(22, camCtrl.desiredTarget.z));
+        }
+      });
+
+      window.addEventListener('pointerup', e => {
+        if (!camCtrl.isDragging) return;
+        camCtrl.isDragging = false;
+
+        // Nếu di chuyển chuột nhỏ (< 6px), xử lý như thao tác Click chọn thiết bị 3D
+        const dist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+        if (dist < 6 && e.target === domEl) {
+          handle3DClick(e.clientX, e.clientY);
+        }
+      });
+
+      domEl.addEventListener('wheel', e => {
+        e.preventDefault();
+        camCtrl.desiredSpherical.radius = Math.max(9, Math.min(95, camCtrl.desiredSpherical.radius + e.deltaY * 0.025));
+      }, { passive: false });
+
+      // Hỗ trợ cảm ứng 2 ngón (Pinch-to-zoom) trên điện thoại/tablet
+      domEl.addEventListener('touchstart', e => {
+        if (e.touches.length === 2) {
+          camCtrl.pinchDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+        }
+      }, { passive: true });
+
+      domEl.addEventListener('touchmove', e => {
+        if (e.touches.length === 2) {
+          const newDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          const delta = camCtrl.pinchDist - newDist;
+          camCtrl.pinchDist = newDist;
+          camCtrl.desiredSpherical.radius = Math.max(9, Math.min(95, camCtrl.desiredSpherical.radius + delta * 0.08));
+        }
+      }, { passive: true });
+    }
+
+    function handle3DClick(clientX, clientY) {
+      const mouse = new THREE.Vector2(
+        (clientX / window.innerWidth) * 2 - 1,
+        -(clientY / window.innerHeight) * 2 + 1
+      );
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(interactiveMeshes, false);
+      if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        const tag = hit.userData.scadaTag;
+        const detailId = hit.userData.eqDetailId || null;
+        if (tag) {
+          selectEquipment(tag, detailId);
+        }
+      }
+    }
+
+    function setCameraPreset(presetKey) {
+      const p = CAMERA_PRESETS[presetKey];
+      if (!p) return;
+      camCtrl.autoOrbit = false;
+      updateAutoOrbitButtonUI();
+      camCtrl.desiredTarget.set(p.target[0], p.target[1], p.target[2]);
+      camCtrl.desiredSpherical.radius = p.radius;
+      camCtrl.desiredSpherical.phi = p.phi;
+      camCtrl.desiredSpherical.theta = p.theta;
+
+      ['OVERVIEW', 'SPS14', 'EQ', 'BIO', 'CEMS'].forEach(k => {
+        const btn = document.getElementById(`cam-btn-${k}`);
+        if (!btn) return;
+        btn.className = k === presetKey
+          ? 'px-2 py-1 rounded text-[11px] font-semibold bg-sky-600 text-white transition'
+          : 'px-2 py-1 rounded text-[11px] font-semibold text-slate-300 hover:bg-slate-800 transition';
+      });
+    }
+
+    function toggleAutoOrbit() {
+      camCtrl.autoOrbit = !camCtrl.autoOrbit;
+      updateAutoOrbitButtonUI();
+    }
+
+    function updateAutoOrbitButtonUI() {
+      const btn = document.getElementById('cam-btn-ORBIT');
+      if (!btn) return;
+      btn.className = camCtrl.autoOrbit
+        ? 'px-2 py-1 rounded text-[11px] font-semibold bg-amber-600 text-white border border-amber-400 transition'
+        : 'px-2 py-1 rounded text-[11px] font-semibold text-amber-300 hover:bg-slate-800 border border-amber-500/30 transition';
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // =========================================================================
+    // 5. NHÃN NỔI 3D ĐỒNG BỘ TỌA ĐỘ MÀN HÌNH (HTML OVERLAY)
+    // =========================================================================
+    const STAGE_3D_LABELS = [
+      { id: 'lbl-stage1', tag: 'STAGE1_SCR', pos: [-35, 4.3, 0], title: '1. SCR-101 & FIT-101', subId: 'lbl3d-sub-1', color: 'border-sky-400/70 text-sky-300' },
+      { id: 'lbl-sps14',  tag: 'SPS14_WELL', pos: [-21.5, 5.2, 0.5], title: '2. TRẠM BƠM SPS14 (3×34kW)', subId: 'lbl3d-sub-2', color: 'border-emerald-400/70 text-emerald-300' },
+      { id: 'lbl-vsd',    tag: 'VSD_PANEL',  pos: [-21.5, 4.5, -6.8], title: 'TỦ VSD SIEMENS & BYPASS', subId: 'lbl3d-sub-vsd', color: 'border-indigo-400/70 text-indigo-300' },
+      { id: 'lbl-eq',     tag: 'EQ_TANK',    pos: [-3.0, 5.8, -0.5], title: '3. BỂ ĐIỀU HÒA EQ-201', subId: 'lbl3d-sub-3', color: 'border-cyan-400/70 text-cyan-300' },
+      { id: 'lbl-aero',   tag: 'AEROTANK',   pos: [10.5, 5.2, 0], title: '4A. AEROTANK AT-301', subId: 'lbl3d-sub-4a', color: 'border-amber-400/70 text-amber-300' },
+      { id: 'lbl-clar',   tag: 'CLARIFIER',  pos: [21.5, 4.8, 0], title: '4B. BỂ LẮNG ST-401', subId: 'lbl3d-sub-4b', color: 'border-sky-400/70 text-sky-300' },
+      { id: 'lbl-cems',   tag: 'DISINFECTION', pos: [33.5, 4.5, 0], title: '5. KHỬ TRÙNG & CEMS', subId: 'lbl3d-sub-5', color: 'border-teal-400/70 text-teal-300' }
+    ];
+
+    function build3DOverlayLabels() {
+      const overlay = document.getElementById('labels-overlay');
+      let html = '';
+
+      STAGE_3D_LABELS.forEach(item => {
+        html += `
+          <div id="${item.id}" onclick="selectEquipment('${item.tag}')"
+            class="label-3d bg-[#081020]/90 backdrop-blur-sm border ${item.color} px-2.5 py-1 rounded-lg shadow-lg text-center">
+            <div class="text-[10px] font-bold tracking-wide whitespace-nowrap">${item.title}</div>
+            <div id="${item.subId}" class="text-[10px] font-mono-tech text-slate-200 whitespace-nowrap mt-0.5">--</div>
+          </div>
+        `;
+      });
+
+      // 11 Ghim đánh số chi tiết Bể điều hòa (01 - 11)
+      EQ_11_DETAILS.forEach(d => {
+        html += `
+          <div id="eq-pin-${d.id}" onclick="selectEquipment('EQ_TANK', ${d.id})"
+            class="detail-pin-3d" title="${String(d.id).padStart(2, '0')}. ${d.name}">
+            ${String(d.id).padStart(2, '0')}
+          </div>
+        `;
+      });
+
+      overlay.innerHTML = html;
+    }
+
+    function update3DOverlayPositions() {
+      const halfW = window.innerWidth / 2;
+      const halfH = window.innerHeight / 2;
+      const tempVec = new THREE.Vector3();
+
+      STAGE_3D_LABELS.forEach(item => {
+        const el = document.getElementById(item.id);
+        if (!el) return;
+        if (!state.show3DLabels) {
+          el.style.display = 'none';
+          return;
+        }
+        tempVec.set(item.pos[0], item.pos[1], item.pos[2]);
+        tempVec.project(camera);
+        if (tempVec.z > 1) {
+          el.style.display = 'none';
+        } else {
+          el.style.display = 'block';
+          el.style.left = `${(tempVec.x * halfW) + halfW}px`;
+          el.style.top = `${-(tempVec.y * halfH) + halfH}px`;
+        }
+      });
+
+      EQ_11_DETAILS.forEach(d => {
+        const pin = document.getElementById(`eq-pin-${d.id}`);
+        if (!pin) return;
+        if (!state.showEqPins) {
+          pin.style.display = 'none';
+          return;
+        }
+        tempVec.set(d.pos3D[0], d.pos3D[1], d.pos3D[2]);
+        tempVec.project(camera);
+        if (tempVec.z > 1) {
+          pin.style.display = 'none';
+        } else {
+          pin.style.display = 'flex';
+          pin.style.left = `${(tempVec.x * halfW) + halfW}px`;
+          pin.style.top = `${-(tempVec.y * halfH) + halfH}px`;
+          if (state.highlightedEqDetail === d.id) {
+            pin.classList.add('pin-active');
+          } else {
+            pin.classList.remove('pin-active');
+          }
+        }
+      });
+    }
+
+    // =========================================================================
+    // 6. LOGIC VẬT LÝ, TRUYỀN ĐỘNG VSD / DOL / BYPASS & CÂN BẰNG VẬT CHẤT
+    // =========================================================================
+    function getCurrentSurveyCase() {
+      if (state.activeCaseId === 'AUTO_24H') {
+        return SURVEY_CASES[state.auto24hIndex];
+      }
+      return SURVEY_CASES.find(c => c.id === state.activeCaseId) || null;
+    }
+
+    function computeActiveDriveParams() {
+      const c = getCurrentSurveyCase();
+      if (c) {
+        return {
+          caseObj: c,
+          pumpsCount: c.pumpsCount,
+          hours: c.hours,
+          qNeedTotal: c.qNeedTotal,
+          dolRunHours: c.dolRunHours,
+          dolIdleHours: c.dolIdleHours,
+          dolQPerPump: c.dolQPerPump,
+          dolPPerPump: c.dolPPerPump,
+          a1: c.a1,
+          vsdQPerPump: c.vsdQPerPump,
+          speedRatio: c.speedRatio,
+          n2: c.n2,
+          a2: c.a2,
+          deltaA: c.deltaA,
+          recommendBypass: c.recommendBypass
+        };
+      }
+
+      const pumpsCount = state.qIn <= 1050 ? 1 : 2;
+      const dolQPerPump = pumpsCount === 1 ? 1050 : 954;
+      const dolPPerPump = pumpsCount === 1 ? 32.5 : 32.1;
+      const totalDolQ = dolQPerPump * pumpsCount;
+      const hours = 3.0;
+      const dolRunHours = Math.min(hours, (state.qIn * hours) / totalDolQ);
+      const dolIdleHours = Math.max(0, hours - dolRunHours);
+      const a1 = dolPPerPump * dolRunHours * (1 + 0.05 * dolIdleHours) * pumpsCount;
+
+      const vsdQPerPump = Math.min(dolQPerPump, state.qIn / pumpsCount);
+      const speedRatio = Number((vsdQPerPump / dolQPerPump).toFixed(2));
+      const n2 = Math.round(speedRatio * N_RATED);
+      const a2 = dolPPerPump * Math.pow(speedRatio, 3) * hours * pumpsCount * 1.1;
+      const deltaA = a1 - a2;
+      const recommendBypass = deltaA < 0;
+
+      return {
+        caseObj: null,
+        pumpsCount,
+        hours,
+        qNeedTotal: state.qIn,
+        dolRunHours,
+        dolIdleHours,
+        dolQPerPump,
+        dolPPerPump,
+        a1,
+        vsdQPerPump,
+        speedRatio,
+        n2,
+        a2,
+        deltaA,
+        recommendBypass
+      };
+    }
+
+    function stepSimulation(dtRealSec) {
+      const dtSimSec = dtRealSec * state.simSpeed;
+      const dtHours = dtSimSec / 3600.0;
+      state.simElapsedSec += dtSimSec;
+
+      // Chuyển khung giờ tự động khi bật Chu kỳ 24h
+      if (state.activeCaseId === 'AUTO_24H') {
+        const cur = SURVEY_CASES[state.auto24hIndex];
+        const caseSimDurationSec = cur.hours * 10;
+        state.auto24hCaseTimerSec += dtSimSec;
+        if (state.auto24hCaseTimerSec >= caseSimDurationSec) {
+          state.auto24hCaseTimerSec = 0;
+          state.auto24hIndex = (state.auto24hIndex + 1) % SURVEY_CASES.length;
+          const nextCase = SURVEY_CASES[state.auto24hIndex];
+          state.qIn = nextCase.qNeedTotal;
+          document.getElementById('q-in-slider').value = Math.round(nextCase.qNeedTotal);
+          document.getElementById('hud-qin-val').textContent = nextCase.qNeedTotal.toLocaleString('vi-VN');
+        }
+      }
+
+      if (state.mode === 'AUTO') {
+        const params = computeActiveDriveParams();
+        const spsKeys = ['P101', 'P102', 'P103'];
+        let pumpsShouldRun = true;
+        let effectiveDriveTag = 'VSD';
+
+        if (state.driveMode === 'DOL') {
+          const dutyCycle = params.hours > 0 ? (params.dolRunHours / params.hours) : 1;
+          const cyclePeriodSec = 20;
+          state.dolCyclePhaseSec = (state.dolCyclePhaseSec + dtSimSec) % cyclePeriodSec;
+          const inRunWindow = (state.dolCyclePhaseSec / cyclePeriodSec) <= dutyCycle || dutyCycle >= 0.995;
+          pumpsShouldRun = inRunWindow;
+          effectiveDriveTag = inRunWindow ? 'DOL_RUN' : 'DOL_IDLE';
+        } else if (state.driveMode === 'VSD_BYPASS') {
+          pumpsShouldRun = true;
+          effectiveDriveTag = params.recommendBypass ? 'BYPASS' : 'VSD';
+        } else {
+          pumpsShouldRun = true;
+          effectiveDriveTag = 'VSD';
+        }
+
+        let assigned = 0;
+        spsKeys.forEach(k => {
+          const d = state.devices[k];
+          if (d.fault) {
+            d.running = false;
+            d.driveState = 'TRIP';
+            d.rpm = 0;
+            d.freqHz = 0;
+            d.flowM3h = 0;
+            d.activeKw = 0;
+          } else if (pumpsShouldRun && assigned < params.pumpsCount) {
+            d.running = true;
+            d.driveState = effectiveDriveTag;
+            if (effectiveDriveTag === 'DOL_RUN' || effectiveDriveTag === 'BYPASS') {
+              d.rpm = N_RATED;
+              d.freqHz = 50.0;
+              d.flowM3h = effectiveDriveTag === 'DOL_RUN' ? params.dolQPerPump : params.vsdQPerPump;
+              d.activeKw = params.dolPPerPump;
+            } else {
+              d.rpm = params.n2;
+              d.freqHz = Number((50.0 * (params.n2 / N_RATED)).toFixed(1));
+              d.flowM3h = params.vsdQPerPump;
+              d.activeKw = Number((params.dolPPerPump * Math.pow(params.speedRatio, 3) * 1.1).toFixed(2));
+            }
+            assigned++;
+          } else {
+            d.running = false;
+            d.driveState = !pumpsShouldRun && assigned < params.pumpsCount ? 'DOL_IDLE' : 'STBY';
+            if (d.driveState === 'DOL_IDLE') assigned++;
+            d.rpm = 0;
+            d.freqHz = 0;
+            d.flowM3h = 0;
+            d.activeKw = 0;
+          }
+        });
+
+        // Điều khiển dự phòng tự động cho các cụm phụ trợ
+        if (!state.devices.BL201A.fault) {
+          state.devices.BL201A.running = true;
+          state.devices.BL201B.running = false;
+        } else if (!state.devices.BL201B.fault) {
+          state.devices.BL201B.running = true;
+        }
+
+        if (!state.devices.P201A.fault) {
+          state.devices.P201A.running = true;
+          state.devices.P201B.running = false;
+        } else if (!state.devices.P201B.fault) {
+          state.devices.P201B.running = true;
+        }
+      }
+
+      // Tính tổng lưu lượng & công suất trạm SPS14
+      let qSpsOut = 0;
+      let totalSpsKw = 0;
+      ['P101', 'P102', 'P103'].forEach(k => {
+        const d = state.devices[k];
+        if (d.running && !d.fault) {
+          qSpsOut += d.flowM3h;
+          totalSpsKw += d.activeKw;
+          d.currentA = Number(((d.activeKw * 1000) / (Math.sqrt(3) * 380 * 0.80)).toFixed(1));
+        } else {
+          d.currentA = 0.0;
+        }
+      });
+      state.sps14.qOut = qSpsOut;
+      state.sps14.totalKw = totalSpsKw;
+
+      // Cân bằng vật chất ngăn thu SPS14 (V = 100 m3)
+      const levelVisualGain = state.driveMode === 'DOL' ? 12.0 : 1.0;
+      state.sps14.vol += (state.qIn - qSpsOut) * dtHours * levelVisualGain;
+      state.sps14.vol = Math.max(18, Math.min(state.sps14.vMax - 8, state.sps14.vol));
+
+      // Cân bằng vật chất Bể Điều Hòa (V = 3.200 m3)
+      const eqPumpOn = (state.devices.P201A.running && !state.devices.P201A.fault) || (state.devices.P201B.running && !state.devices.P201B.fault);
+      state.eq.qOut = eqPumpOn ? 1426 : 0;
+      state.eq.vol += (qSpsOut - state.eq.qOut) * dtHours;
+      state.eq.vol = Math.max(650, Math.min(state.eq.vMax, state.eq.vol));
+      state.eq.overflowActive = state.eq.vol >= state.eq.vMax;
+
+      // Động học sinh học & CEMS
+      const aeroAirOn = state.devices.BL301A.running && !state.devices.BL301A.fault;
+      const rasOn = state.devices.RAS401.running && !state.devices.RAS401.fault;
+      const wasOn = state.devices.WAS402.running && !state.devices.WAS402.fault;
+      const cl2On = state.devices.D501.running && !state.devices.D501.fault;
+
+      state.aero.doVal = aeroAirOn ? 2.45 : 0.35;
+      state.aero.mlssVal = rasOn ? 3250 : 1480;
+      state.clarifier.rasFlow = rasOn ? Math.round(state.eq.qOut * 0.5) : 0;
+      state.clarifier.wasFlow = wasOn ? 24 : 0;
+      state.effluent.qOut = Math.max(0, state.eq.qOut - (wasOn ? 4 : 0));
+
+      const bioOk = aeroAirOn && rasOn;
+      state.effluent.cod = bioOk ? 38.0 : 94.0;
+      state.effluent.bod = bioOk ? 18.0 : 52.0;
+      state.effluent.tss = rasOn ? 22.0 : 65.0;
+      state.effluent.nh4 = aeroAirOn ? 2.8 : 14.2;
+      state.effluent.coliform = cl2On && state.effluent.qOut > 0 ? 1800 : 48000;
+      state.effluent.cl2 = cl2On && state.effluent.qOut > 0 ? 0.35 : 0.0;
+    }
+
+    // =========================================================================
+    // 7. CẬP NHẬT ĐỐI TƯỢNG 3D & GIAO DIỆN HUD MỖI KHUNG HÌNH
+    // =========================================================================
+    function update3DSceneObjects(dtRealSec, elapsedTotalSec) {
+      // 1. Cơ cấu cào rác SCR-101
+      if (sceneRefs.scrRake && state.scrRunning) {
+        const cycle = (Math.sin(elapsedTotalSec * 2.0) + 1) * 0.5;
+        sceneRefs.scrRake.position.y = 1.2 + cycle * 1.9;
+        sceneRefs.scrRake.position.x = -35 + 0.15 + cycle * 0.45;
+      }
+
+      // 2. Mực nước ngăn thu SPS14
+      const spsRatio = state.sps14.vol / state.sps14.vMax;
+      const spsWaterH = Math.max(0.25, spsRatio * 3.65);
+      if (sceneRefs.spsWaterMesh) {
+        sceneRefs.spsWaterMesh.scale.y = spsWaterH;
+        sceneRefs.spsWaterMesh.position.y = 0.38 + spsWaterH / 2;
+      }
+      if (sceneRefs.spsSonarBeam) {
+        const topWaterY = 0.38 + spsWaterH;
+        const beamH = Math.max(0.2, 4.15 - topWaterY);
+        sceneRefs.spsSonarBeam.scale.y = beamH;
+        sceneRefs.spsSonarBeam.position.y = topWaterY + beamH / 2;
+      }
+
+      // 3. Cụm 3 máy bơm chìm SPS14: Tốc độ quay trục & màu đèn trạng thái
+      ['P101', 'P102', 'P103'].forEach(k => {
+        const d = state.devices[k];
+        const ref = sceneRefs.spsPumps[k];
+        if (!ref) return;
+
+        if (d.fault) {
+          const blink = Math.sin(elapsedTotalSec * 14) > 0;
+          ref.ringMat.color.setHex(blink ? 0xef4444 : 0x7f1d1d);
+          ref.pipeMat.color.setHex(0xef4444);
+          ref.pipeMat.opacity = 0.35;
+        } else if (d.running) {
+          // Quay cánh bơm tỉ lệ tốc độ thực tế n2
+          const angularVel = (d.rpm / N_RATED) * 14.0;
+          ref.impeller.rotation.y += angularVel * dtRealSec;
+          const isBypass = d.driveState === 'BYPASS';
+          const isDol = d.driveState === 'DOL_RUN';
+          const hex = isBypass ? 0x06b6d4 : (isDol ? 0xf59e0b : 0x10b981);
+          ref.ringMat.color.setHex(hex);
+          ref.pipeMat.color.setHex(hex);
+          ref.pipeMat.opacity = 0.78;
+        } else {
+          const idleHex = d.driveState === 'DOL_IDLE' ? 0xf59e0b : 0x64748b;
+          ref.ringMat.color.setHex(idleHex);
+          ref.pipeMat.color.setHex(0x475569);
+          ref.pipeMat.opacity = 0.25;
+        }
+      });
+
+      // 4. Đèn LED tủ biến tần Siemens & Contactor Bypass trong nhà điều khiển
+      const p1 = state.devices.P101;
+      const p2 = state.devices.P102;
+      if (sceneRefs.vsdLeds.VSD1) {
+        if (state.driveMode === 'DOL') {
+          sceneRefs.vsdLeds.VSD1.color.setHex(0x475569);
+          sceneRefs.vsdLeds.KMBP1.color.setHex(0x475569);
+          sceneRefs.vsdLeds.VSD2.color.setHex(0x475569);
+          sceneRefs.vsdLeds.KMBP2.color.setHex(0x475569);
+        } else {
+          sceneRefs.vsdLeds.VSD1.color.setHex(p1.driveState === 'VSD' ? 0x10b981 : 0x334155);
+          sceneRefs.vsdLeds.KMBP1.color.setHex(p1.driveState === 'BYPASS' ? 0x06b6d4 : 0x334155);
+          sceneRefs.vsdLeds.VSD2.color.setHex(p2.driveState === 'VSD' ? 0x10b981 : 0x334155);
+          sceneRefs.vsdLeds.KMBP2.color.setHex(p2.driveState === 'BYPASS' ? 0x06b6d4 : 0x334155);
+        }
+      }
+
+      // 5. Bể Điều Hòa & Bọt khí 3D
+      const eqRatio = state.eq.vol / state.eq.vMax;
+      const eqWaterH = Math.max(0.4, eqRatio * 4.05);
+      if (sceneRefs.eqWaterMesh) {
+        sceneRefs.eqWaterMesh.scale.y = eqWaterH;
+        sceneRefs.eqWaterMesh.position.y = 0.38 + eqWaterH / 2;
+      }
+
+      const eqBlowerOn = (state.devices.BL201A.running && !state.devices.BL201A.fault) || (state.devices.BL201B.running && !state.devices.BL201B.fault);
+      const maxEqBubY = 0.38 + eqWaterH - 0.1;
+      sceneRefs.eqBubbles.forEach(bub => {
+        bub.visible = eqBlowerOn;
+        if (eqBlowerOn) {
+          bub.position.y += bub.userData.speed * dtRealSec;
+          bub.position.x = bub.userData.baseX + Math.sin(elapsedTotalSec * 4 + bub.position.y * 3) * 0.06;
+          if (bub.position.y > maxEqBubY) {
+            bub.position.y = 0.75;
+          }
+        }
+      });
+
+      // 6. Bể Aerotank bọt khí mịn & Cầu gạt bùn Bể lắng ST-401
+      const aeroAirOn = state.devices.BL301A.running && !state.devices.BL301A.fault;
+      sceneRefs.aeroBubbles.forEach(fb => {
+        fb.visible = aeroAirOn;
+        if (aeroAirOn) {
+          fb.position.y += fb.userData.speed * dtRealSec;
+          if (fb.position.y > 3.9) fb.position.y = 0.5;
+        }
+      });
+
+      if (sceneRefs.clarifierBridge) {
+        sceneRefs.clarifierBridge.rotation.y += 0.35 * dtRealSec;
+      }
+
+      // 7. Hạt dòng chảy trong đường ống công nghệ
+      sceneRefs.flowParticles.forEach(fp => {
+        const active = fp.activeFn();
+        fp.mesh.visible = active;
+        if (active) {
+          fp.t = (fp.t + dtRealSec * 0.28 * fp.speedFn() * Math.min(4, state.simSpeed)) % 1.0;
+          const pt = fp.curve.getPointAt(fp.t);
+          fp.mesh.position.copy(pt);
+        }
+      });
+
+      // 8. Cập nhật Camera mượt mà (Damping)
+      if (camCtrl.autoOrbit && !camCtrl.isDragging) {
+        camCtrl.desiredSpherical.theta += 0.14 * dtRealSec;
+      }
+      camCtrl.target.lerp(camCtrl.desiredTarget, 0.12);
+      camCtrl.spherical.radius += (camCtrl.desiredSpherical.radius - camCtrl.spherical.radius) * 0.12;
+      camCtrl.spherical.phi += (camCtrl.desiredSpherical.phi - camCtrl.spherical.phi) * 0.12;
+      camCtrl.spherical.theta += (camCtrl.desiredSpherical.theta - camCtrl.spherical.theta) * 0.12;
+
+      const offset = new THREE.Vector3().setFromSpherical(camCtrl.spherical);
+      camera.position.copy(camCtrl.target).add(offset);
+      camera.lookAt(camCtrl.target);
+    }
+
+    function updateHUDTelemetry() {
+      const nowStr = new Date().toTimeString().split(' ')[0];
+      const s = Math.floor(state.simElapsedSec);
+      const simStr = `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+      document.getElementById('clock-desktop').textContent = nowStr;
+      document.getElementById('clock-mobile').textContent = nowStr;
+      document.getElementById('sim-time-desktop').textContent = `Mô phỏng: ${simStr}`;
+      document.getElementById('sim-time-mobile').textContent = `T+ ${simStr}`;
+
+      const params = computeActiveDriveParams();
+      const activePumps = ['P101', 'P102', 'P103'].map(k => state.devices[k]).filter(d => d.running && !d.fault);
+      const dispRpm = activePumps.length > 0 ? activePumps[0].rpm : 0;
+      const dispHz = activePumps.length > 0 ? activePumps[0].freqHz : 0;
+      const dispMode = activePumps.length > 0 ? activePumps[0].driveState : (state.driveMode === 'DOL' ? 'DOL NGHỈ CHỜ' : 'STANDBY');
+
+      document.getElementById('kpi-rpm-hz').textContent = `${dispRpm} v/p • ${dispHz.toFixed(1)}Hz`;
+      document.getElementById('kpi-drive-tag').textContent = `${dispMode} (${activePumps.length}/${params.pumpsCount} Bơm)`;
+      document.getElementById('kpi-energy-compare').textContent = `${params.a1.toFixed(1)} / ${params.a2.toFixed(1)} kWh`;
+
+      const deltaEl = document.getElementById('kpi-saving-delta');
+      if (state.driveMode === 'DOL') {
+        deltaEl.className = 'text-[10px] text-amber-400';
+        deltaEl.textContent = 'Cơ sở DOL 100%';
+      } else if (state.driveMode === 'VSD_BYPASS' && params.recommendBypass) {
+        deltaEl.className = 'text-[10px] text-emerald-400';
+        deltaEl.textContent = `Bypass tránh lỗ ${(params.a2 - params.a1).toFixed(2)} kWh`;
+      } else if (params.deltaA >= 0) {
+        deltaEl.className = 'text-[10px] text-emerald-400';
+        deltaEl.textContent = `Tiết kiệm +${params.deltaA.toFixed(2)} kWh`;
+      } else {
+        deltaEl.className = 'text-[10px] text-rose-400';
+        deltaEl.textContent = `Tổn thất VSD ${params.deltaA.toFixed(2)} kWh`;
+      }
+
+      const spsH = (state.sps14.vol / state.sps14.vMax) * state.sps14.hMax;
+      const spsHrtMin = state.qIn > 0 ? (state.sps14.vol / state.qIn) * 60 : 0;
+      document.getElementById('kpi-sps-level').textContent = `${spsH.toFixed(2)} m (${state.sps14.vol.toFixed(0)} m³)`;
+      document.getElementById('kpi-sps-hrt').textContent = `Lưu: ${spsHrtMin.toFixed(1)} phút (5-15p)`;
+
+      const eqH = (state.eq.vol / state.eq.vMax) * state.eq.hMax;
+      const eqHrtH = state.eq.qOut > 0 ? state.eq.vol / state.eq.qOut : 0;
+      document.getElementById('kpi-eq-level').textContent = `${eqH.toFixed(2)} m (${Math.round(state.eq.vol)} m³)`;
+      document.getElementById('kpi-eq-hrt').textContent = `HRT: ${eqHrtH.toFixed(2)} giờ (4-8h)`;
+
+      // Cập nhật nội dung nhãn nổi 3D
+      const setSub = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+      setSub('lbl3d-sub-1', `Q_vào: ${Math.round(state.qIn)} m³/h`);
+      setSub('lbl3d-sub-2', `${spsH.toFixed(2)}m • ${Math.round(state.sps14.qOut)} m³/h • ${state.sps14.totalKw.toFixed(1)} kW`);
+      setSub('lbl3d-sub-vsd', `${dispMode} • ${dispRpm} v/p`);
+      setSub('lbl3d-sub-3', `${eqH.toFixed(2)}m • HRT: ${eqHrtH.toFixed(2)}h`);
+      setSub('lbl3d-sub-4a', `DO: ${state.aero.doVal.toFixed(2)} mg/L • MLSS: ${state.aero.mlssVal}`);
+      setSub('lbl3d-sub-4b', `RAS: ${state.clarifier.rasFlow} m³/h • WAS: ${state.clarifier.wasFlow} m³/h`);
+      setSub('lbl3d-sub-5', `COD: ${state.effluent.cod.toFixed(0)} • BOD₅: ${state.effluent.bod.toFixed(0)} • Đạt QCVN 14`);
+
+      // Cập nhật số liệu động trong Inspector nếu đang mở
+      const liveEl = document.getElementById('insp-live-dynamic');
+      if (liveEl) {
+        if (state.devices[state.selectedTag]) {
+          const d = state.devices[state.selectedTag];
+          liveEl.textContent = `${d.rpm} v/p • ${d.freqHz.toFixed(1)} Hz • ${d.flowM3h.toFixed(1)} m³/h • ${d.activeKw.toFixed(1)} kW (${d.currentA.toFixed(1)} A)`;
+        } else if (state.selectedTag === 'SPS14_WELL' || state.selectedTag === 'SPS14_STATION') {
+          liveEl.textContent = `Mức ${spsH.toFixed(2)} m (${state.sps14.vol.toFixed(1)} m³) • Lưu ${spsHrtMin.toFixed(1)} phút • Q_bơm ${Math.round(state.sps14.qOut)} m³/h`;
+        } else if (state.selectedTag === 'EQ_TANK') {
+          liveEl.textContent = `Mức ${eqH.toFixed(2)} m (${Math.round(state.eq.vol)} m³) • HRT thực tế ${eqHrtH.toFixed(2)} giờ`;
+        }
+      }
+    }
+
+    // =========================================================================
+    // 8. ĐIỀU KHIỂN CHẾ ĐỘ VSD/DOL/BYPASS, KHUNG GIỜ & THANH TRA THIẾT BỊ
+    // =========================================================================
+    function checkLockGuard() {
+      if (state.controlsLocked) {
+        showToast('Đang bật KHÓA TRÌNH CHIẾU. Bấm nút "🔒 Đã khóa" trên thanh tiêu đề để mở điều khiển.');
+        return true;
+      }
+      return false;
+    }
+
+    function toggleControlLock() {
+      state.controlsLocked = !state.controlsLocked;
+      const btn = document.getElementById('btn-lock-controls');
+      const icon = document.getElementById('lock-icon');
+      const text = document.getElementById('lock-text');
+      if (state.controlsLocked) {
+        btn.className = 'px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-amber-600 text-white border border-amber-400 transition flex items-center gap-1';
+        icon.textContent = '🔒';
+        text.textContent = 'Đã khóa';
+        showToast('Đã KHÓA thao tác điều khiển thiết bị để trình chiếu an toàn.');
+      } else {
+        btn.className = 'px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/40 transition flex items-center gap-1';
+        icon.textContent = '🔓';
+        text.textContent = 'Mở ĐK';
+        showToast('Đã MỞ KHÓA thao tác điều khiển thiết bị.');
+      }
+      renderInspector();
+    }
+
+    function toggle3DLabels() {
+      state.show3DLabels = !state.show3DLabels;
+      const btn = document.getElementById('btn-toggle-labels');
+      btn.textContent = `Nhãn 3D: ${state.show3DLabels ? 'BẬT' : 'TẮT'}`;
+    }
+
+    function toggleEqDetailPins() {
+      state.showEqPins = !state.showEqPins;
+      const btn = document.getElementById('btn-toggle-eq-pins');
+      btn.textContent = `11 CT Bể ĐH: ${state.showEqPins ? 'BẬT' : 'TẮT'}`;
+    }
+
+    function toggleInspectorCollapse() {
+      state.inspectorCollapsed = !state.inspectorCollapsed;
+      const body = document.getElementById('inspector-body');
+      const btn = document.getElementById('btn-collapse-inspector');
+      if (state.inspectorCollapsed) {
+        body.classList.add('hidden');
+        btn.textContent = '+';
+      } else {
+        body.classList.remove('hidden');
+        btn.textContent = '−';
+      }
+    }
+
+    function setDriveMode(mode) {
+      if (checkLockGuard()) return;
+      state.driveMode = mode;
+      state.dolCyclePhaseSec = 0;
+
+      ['DOL', 'VSD', 'VSD_BYPASS'].forEach(m => {
+        const btn = document.getElementById(`btn-drive-${m}`);
+        if (!btn) return;
+        if (m === mode) {
+          const styles = {
+            DOL: 'px-2 py-1 rounded text-[11px] font-semibold bg-amber-600 text-white shadow transition',
+            VSD: 'px-2 py-1 rounded text-[11px] font-semibold bg-emerald-600 text-white shadow transition',
+            VSD_BYPASS: 'px-2 py-1 rounded text-[11px] font-semibold bg-sky-600 text-white shadow transition'
+          };
+          btn.className = styles[m];
+        } else {
+          btn.className = 'px-2 py-1 rounded text-[11px] font-semibold text-slate-400 hover:text-white transition';
+        }
+      });
+      renderInspector();
+    }
+
+    function selectSurveyCase(caseId) {
+      if (checkLockGuard()) return;
+      state.activeCaseId = caseId;
+      state.dolCyclePhaseSec = 0;
+      if (caseId === 'AUTO_24H') {
+        state.auto24hIndex = 0;
+        state.auto24hCaseTimerSec = 0;
+      }
+
+      ['TH1', 'TH2', 'TH3', 'TH4', 'TH5', 'TH6', 'TH7', 'AUTO_24H'].forEach(id => {
+        const btn = document.getElementById(`btn-case-${id}`);
+        if (!btn) return;
+        if (id === caseId) {
+          btn.className = id === 'AUTO_24H'
+            ? 'px-2 py-1 rounded text-[10px] font-bold bg-emerald-600 text-white border border-emerald-400'
+            : 'px-2 py-1 rounded text-[10px] font-bold bg-sky-600 text-white border border-sky-400/50';
+        } else {
+          btn.className = id === 'AUTO_24H'
+            ? 'px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/40'
+            : 'px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700';
+        }
+      });
+
+      const c = getCurrentSurveyCase();
+      if (c) {
+        state.qIn = c.qNeedTotal;
+        document.getElementById('q-in-slider').value = Math.round(c.qNeedTotal);
+        document.getElementById('hud-qin-val').textContent = c.qNeedTotal.toLocaleString('vi-VN', { maximumFractionDigits: 1 });
+      }
+      renderInspector();
+    }
+
+    function updateInletFlow(val) {
+      if (checkLockGuard()) return;
+      state.qIn = Number(val);
+      state.activeCaseId = 'CUSTOM';
+      document.getElementById('hud-qin-val').textContent = state.qIn.toLocaleString('vi-VN');
+      ['TH1', 'TH2', 'TH3', 'TH4', 'TH5', 'TH6', 'TH7', 'AUTO_24H'].forEach(id => {
+        const btn = document.getElementById(`btn-case-${id}`);
+        if (btn) {
+          btn.className = id === 'AUTO_24H'
+            ? 'px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/40'
+            : 'px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700';
+        }
+      });
+      renderInspector();
+    }
+
+    function setControlMode(mode) {
+      if (checkLockGuard()) return;
+      state.mode = mode;
+      document.getElementById('btn-mode-auto').className = mode === 'AUTO'
+        ? 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white'
+        : 'px-2 py-0.5 rounded text-[10px] font-bold text-slate-400 hover:text-white';
+      document.getElementById('btn-mode-manual').className = mode === 'MANUAL'
+        ? 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-600 text-white'
+        : 'px-2 py-0.5 rounded text-[10px] font-bold text-slate-400 hover:text-white';
+      renderInspector();
+    }
+
+    function setSimSpeed(speed) {
+      state.simSpeed = speed;
+      [1, 10, 30].forEach(s => {
+        const btn = document.getElementById(`btn-speed-${s}`);
+        if (btn) {
+          btn.className = s === speed
+            ? 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-600 text-white'
+            : 'px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-400 hover:text-white';
+        }
+      });
+    }
+
+    function toggleDeviceRun(devKey, desiredState) {
+      if (checkLockGuard()) return;
+      const d = state.devices[devKey];
+      if (!d) return;
+      if (d.fault) {
+        showToast(`Thiết bị ${d.tag} đang bị SỰ CỐ (TRIP). Vui lòng bấm "Reset lỗi" trước!`);
+        return;
+      }
+      if (state.mode === 'AUTO') {
+        setControlMode('MANUAL');
+        showToast('Đã chuyển sang chế độ MANUAL để điều khiển thiết bị tại chỗ.');
+      }
+      d.running = desiredState;
+      d.driveState = desiredState ? 'MANUAL_RUN' : 'STOP';
+      if (desiredState) {
+        d.rpm = N_RATED;
+        d.freqHz = 50.0;
+        d.flowM3h = d.ratedFlow;
+        d.activeKw = d.powerKw * 0.94;
+      } else {
+        d.rpm = 0;
+        d.freqHz = 0;
+        d.flowM3h = 0;
+        d.activeKw = 0;
+      }
+      renderInspector();
+    }
+
+    function triggerDeviceTrip(devKey) {
+      if (checkLockGuard()) return;
+      const d = state.devices[devKey];
+      if (!d) return;
+      d.fault = true;
+      d.running = false;
+      d.driveState = 'TRIP';
+      d.rpm = 0;
+      d.freqHz = 0;
+      d.flowM3h = 0;
+      d.activeKw = 0;
+      showToast(`CẢNH BÁO: ${d.tag} gặp sự cố quá tải (TRIP)!`);
+      renderInspector();
+    }
+
+    function resetDeviceFault(devKey) {
+      if (checkLockGuard()) return;
+      const d = state.devices[devKey];
+      if (!d) return;
+      d.fault = false;
+      d.driveState = 'STBY';
+      showToast(`Đã khôi phục bình thường cho ${d.tag}.`);
+      renderInspector();
+    }
+
+    function selectEquipment(tag, eqDetailId = null) {
+      state.selectedTag = tag;
+      state.highlightedEqDetail = eqDetailId;
+      document.getElementById('inspector-tag').textContent = tag;
+      if (state.inspectorCollapsed) toggleInspectorCollapse();
+      renderInspector();
+    }
+
+    function renderInspector() {
+      const container = document.getElementById('inspector-body');
+      const tag = state.selectedTag;
+      const disabledAttr = state.controlsLocked ? 'disabled opacity-50 cursor-not-allowed' : '';
+
+      if (state.devices[tag]) {
+        const d = state.devices[tag];
+        const statusHtml = d.fault
+          ? `<span class="px-2 py-0.5 rounded bg-red-500/20 border border-red-500 text-red-400 font-bold text-[10px]">TRIP / SỰ CỐ</span>`
+          : (d.running
+            ? `<span class="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500 text-emerald-400 font-bold text-[10px]">RUNNING (${d.driveState})</span>`
+            : `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-bold text-[10px]">STANDBY / STOP</span>`);
+
+        container.innerHTML = `
+          <div class="flex items-start justify-between gap-2 pb-2 border-b border-slate-800">
+            <div>
+              <div class="text-[10px] text-sky-400 font-semibold">${d.stage}</div>
+              <h4 class="text-xs font-bold text-slate-100 mt-0.5">${d.name}</h4>
+            </div>
+            ${statusHtml}
+          </div>
+
+          <div id="insp-live-dynamic" class="p-2 rounded bg-slate-950/85 border border-slate-800 font-mono-tech text-[11px] text-sky-300">
+            ${d.rpm} v/p • ${d.freqHz.toFixed(1)} Hz • ${d.flowM3h.toFixed(1)} m³/h • ${d.activeKw.toFixed(1)} kW (${d.currentA.toFixed(1)} A)
+          </div>
+
+          <div class="grid grid-cols-3 gap-1.5 font-mono-tech text-[11px]">
+            <div class="bg-slate-900/90 p-2 rounded border border-slate-800">
+              <div class="text-[9px] text-slate-400">Công suất ĐM</div>
+              <div class="font-bold text-slate-100">${d.powerKw} kW</div>
+            </div>
+            <div class="bg-slate-900/90 p-2 rounded border border-slate-800">
+              <div class="text-[9px] text-slate-400">Tốc độ ĐM</div>
+              <div class="font-bold text-sky-400">1.455 v/p</div>
+            </div>
+            <div class="bg-slate-900/90 p-2 rounded border border-slate-800">
+              <div class="text-[9px] text-slate-400">Lưu lượng ĐM</div>
+              <div class="font-bold text-emerald-400">${d.ratedFlow} m³/h</div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-1.5 pt-1">
+            <button onclick="toggleDeviceRun('${tag}', true)" class="py-1.5 px-2 rounded-lg font-bold text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white transition ${disabledAttr}">
+              ▶ BẬT
+            </button>
+            <button onclick="toggleDeviceRun('${tag}', false)" class="py-1.5 px-2 rounded-lg font-bold text-[11px] bg-slate-700 hover:bg-slate-600 text-white transition ${disabledAttr}">
+              ■ DỪNG
+            </button>
+            ${d.fault
+              ? `<button onclick="resetDeviceFault('${tag}')" class="py-1.5 px-2 rounded-lg font-bold text-[11px] bg-amber-500 text-slate-950 transition ${disabledAttr}">↺ RESET</button>`
+              : `<button onclick="triggerDeviceTrip('${tag}')" class="py-1.5 px-2 rounded-lg font-bold text-[11px] bg-red-600 hover:bg-red-500 text-white transition ${disabledAttr}">⚡ TRIP</button>`
+            }
+          </div>
+        `;
+        return;
+      }
+
+      if (tag === 'EQ_TANK') {
+        const detailsHtml = EQ_11_DETAILS.map(item => {
+          const active = state.highlightedEqDetail === item.id;
+          return `
+            <div onclick="selectEquipment('EQ_TANK', ${item.id})"
+              class="p-1.5 rounded border cursor-pointer transition text-[11px] ${active ? 'bg-sky-950/80 border-sky-400 text-sky-100' : 'bg-slate-900/70 border-slate-800 text-slate-300 hover:border-slate-600'}">
+              <span class="inline-block w-5 text-center rounded bg-red-600 text-white font-bold text-[9px] mr-1">${String(item.id).padStart(2, '0')}</span>
+              <strong>${item.name}:</strong> <span class="text-slate-400">${item.desc}</span>
+            </div>
+          `;
+        }).join('');
+
+        container.innerHTML = `
+          <div class="pb-2 border-b border-slate-800">
+            <div class="text-[10px] text-cyan-400 font-semibold">Cụm 3 • V = 3.200 m³ • H = 4,5 m • L/B = 2,5</div>
+            <h4 class="text-xs font-bold text-slate-100 mt-0.5">Bể Điều Hòa (Equalization Tank EQ-201)</h4>
+          </div>
+          <div id="insp-live-dynamic" class="p-2 rounded bg-slate-950/85 border border-cyan-500/30 font-mono-tech text-[11px] text-cyan-300">
+            Mức 3.60 m (2560 m³) • HRT thực tế 4.65 giờ (Chuẩn sinh hoạt: 4 – 8h)
+          </div>
+          <div class="text-[11px] text-slate-300">
+            Công thức: <code class="font-mono-tech text-sky-400">V = Q × t ⇒ HRT = V / Q</code>. Cường độ sục khí 3–10 m³ khí/m².h chống lắng cặn.
+          </div>
+          <div class="space-y-1">
+            <div class="font-bold text-slate-200 text-[11px]">11 Chi tiết cấu tạo (Click để định vị trên 3D):</div>
+            ${detailsHtml}
+          </div>
+        `;
+        return;
+      }
+
+      if (tag === 'VSD_PANEL') {
+        const params = computeActiveDriveParams();
+        container.innerHTML = `
+          <div class="pb-2 border-b border-slate-800 flex items-center justify-between">
+            <div>
+              <div class="text-[10px] text-indigo-400 font-semibold">Nhà điều khiển điện SPS14</div>
+              <h4 class="text-xs font-bold text-slate-100 mt-0.5">02 Biến tần Siemens MM430 (37kW) &amp; Contactor Bypass</h4>
+            </div>
+            <button onclick="toggleSummaryModal(true, 'TAB_VSD')" class="px-2 py-1 rounded bg-sky-600 text-white text-[10px] font-bold">Bảng 7 TH</button>
+          </div>
+          <div class="space-y-1.5 text-[11px] text-slate-300">
+            <div class="p-2 rounded bg-slate-900/90 border border-slate-800 font-mono-tech">
+              <div>• Không VSD (DOL): <strong class="text-amber-400">${params.a1.toFixed(2)} kWh</strong> (1.455 v/p)</div>
+              <div>• Có VSD (n₂=${params.n2} v/p): <strong class="text-sky-400">${params.a2.toFixed(2)} kWh</strong></div>
+            </div>
+            <div>• <strong>Chiến lược Bypass tối ưu:</strong> Đóng Contactor Schneider <code class="text-emerald-400">LC1D80A (KM-BP1/2)</code> chạy trực tiếp lưới ở <strong>TH1, TH3, TH5</strong> (tải 99,2–99,8%), loại bỏ <strong>51,64 kWh/ngày</strong> tổn thất nội bộ VSD, nâng tiết kiệm lên <strong>336,74 kWh/ngày</strong> (168,69 triệu VNĐ/năm).</div>
+          </div>
+        `;
+        return;
+      }
+
+      // Mặc định: Tổng quan Trạm bơm SPS14 & Nhà máy 3D
+      const params = computeActiveDriveParams();
+      container.innerHTML = `
+        <div class="pb-2 border-b border-slate-800">
+          <div class="text-[10px] text-emerald-400 font-semibold">Digital Twin 3D • Tuyến đường 2/9, Đà Nẵng</div>
+          <h4 class="text-xs font-bold text-slate-100 mt-0.5">Trạm Bơm Chuyển Tiếp SPS14 &amp; Tuyến Xử Lý 5 Cụm</h4>
+        </div>
+        <div id="insp-live-dynamic" class="p-2 rounded bg-slate-950/85 border border-emerald-500/30 font-mono-tech text-[11px] text-emerald-300">
+          Mức 2.24 m (56 m³) • Lưu 1.8 phút • Q_bơm 1908 m³/h
+        </div>
+        <div class="space-y-1.5 text-[11px] text-slate-300">
+          <div>• <strong>Cấu hình bơm SPS14:</strong> 02 bơm công tác + 01 bơm dự phòng (34 kW, 1.455 v/p). 1 bơm = 1.050 m³/h (32,5 kW); 2 bơm = 1.908 m³/h (32,1 kW/bơm).</div>
+          <div>• <strong>Thời gian lưu ngăn thu (V = 100 m³):</strong> Theo TCVN 7957:2023 đạt <strong>5 – 15 phút</strong> để tránh lắng cặn và phát sinh khí H₂S.</div>
+          <div>• <strong>Khung giờ hiện tại (${params.caseObj ? params.caseObj.label : 'Tùy chỉnh'}):</strong> ${params.caseObj ? params.caseObj.note : 'Điều chỉnh lưu lượng tùy chỉnh qua thanh trượt phía dưới.'}</div>
+        </div>
+        <button onclick="toggleSummaryModal(true, 'TAB_VSD')" class="w-full py-2 rounded-lg bg-sky-600/90 hover:bg-sky-500 text-white font-bold text-[11px] transition">
+          Mở Bảng So Sánh 7 Trường Hợp, Biểu Đồ &amp; Dự Toán
+        </button>
+      `;
+    }
+
+    // =========================================================================
+    // 9. MODAL BẢNG SO SÁNH 7 TH, BIỂU ĐỒ SVG & DỰ TOÁN HOÀN VỐN
+    // =========================================================================
+    function switchModalTab(tabId) {
+      state.activeModalTab = tabId;
+      ['TAB_VSD', 'TAB_CAPEX', 'TAB_PROCESS'].forEach(id => {
+        const btn = document.getElementById(`modal-tab-btn-${id}`);
+        const pane = document.getElementById(`modal-pane-${id}`);
+        if (!btn || !pane) return;
+        if (id === tabId) {
+          btn.className = 'px-3.5 py-2 rounded-t-lg text-xs font-bold border-b-2 border-sky-400 bg-slate-800/80 text-sky-300 transition';
+          pane.classList.remove('hidden');
+        } else {
+          btn.className = 'px-3.5 py-2 rounded-t-lg text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition';
+          pane.classList.add('hidden');
+        }
+      });
+    }
+
+    function renderVsdComparisonModalContent() {
+      const tbody = document.getElementById('vsd-comparison-tbody');
+      const chartContainer = document.getElementById('vsd-chart-container');
+      if (!tbody || !chartContainer) return;
+
+      const rowsHtml = SURVEY_CASES.map(c => {
+        const isActive = state.activeCaseId === c.id;
+        const rowBg = isActive ? 'bg-sky-950/50' : 'hover:bg-slate-800/40';
+        const savingColor = c.deltaA >= 0 ? 'text-emerald-400' : 'text-rose-400';
+        const badgeHtml = c.recommendBypass
+          ? `<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">Bypass (0 kWh)</span>`
+          : `<span class="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold">VSD (${c.n2} v/p)</span>`;
+
+        return `
+          <tr onclick="selectSurveyCase('${c.id}'); toggleSummaryModal(false);" class="cursor-pointer transition ${rowBg}">
+            <td class="p-2 font-bold text-slate-100">${c.id}</td>
+            <td class="p-2 text-slate-300">${c.timeRange} (${c.hours}h)</td>
+            <td class="p-2 text-right">${c.volume.toLocaleString('vi-VN')}</td>
+            <td class="p-2 text-right">${c.qNeedTotal.toFixed(2)}</td>
+            <td class="p-2 text-center">${c.pumpsCount}</td>
+            <td class="p-2 text-right text-amber-200">${c.dolRunHours.toFixed(2)}h / ${c.dolIdleHours.toFixed(2)}h</td>
+            <td class="p-2 text-right text-amber-200">${c.dolQPerPump}</td>
+            <td class="p-2 text-right font-bold text-amber-400">${c.a1.toFixed(2)}</td>
+            <td class="p-2 text-right text-sky-200">${c.vsdQPerPump.toFixed(2)}</td>
+            <td class="p-2 text-right text-sky-200">${c.speedRatio.toFixed(2)}</td>
+            <td class="p-2 text-right font-bold text-sky-300">${c.n2}</td>
+            <td class="p-2 text-right font-bold text-sky-400">${c.a2.toFixed(2)}</td>
+            <td class="p-2 text-right font-bold ${savingColor}">${c.deltaA > 0 ? '+' : ''}${c.deltaA.toFixed(2)}</td>
+            <td class="p-2 text-center">${badgeHtml}</td>
+          </tr>
+        `;
+      }).join('');
+
+      const totalRowsHtml = `
+        <tr class="bg-slate-900 font-bold text-xs border-t-2 border-slate-700">
+          <td colspan="2" class="p-2.5 text-slate-100">TỔNG CỘNG 1 NGÀY/ĐÊM (24h) — VSD 24/24h</td>
+          <td class="p-2.5 text-right text-slate-200">34.235 m³</td>
+          <td colspan="4" class="p-2.5 text-right text-slate-400">TB: 1.426,46 m³/h</td>
+          <td class="p-2.5 text-right text-amber-400">1.188,16 kWh</td>
+          <td colspan="3" class="p-2.5 text-right text-slate-400">—</td>
+          <td class="p-2.5 text-right text-sky-400">903,06 kWh</td>
+          <td class="p-2.5 text-right text-emerald-400">+285,10 kWh</td>
+          <td class="p-2.5 text-center text-sky-300">94.083 kWh/năm</td>
+        </tr>
+        <tr class="bg-emerald-950/35 font-bold text-xs border-t border-emerald-500/30">
+          <td colspan="7" class="p-2.5 text-emerald-300">PHƯƠNG ÁN TỐI ƯU: BIẾN TẦN + CONTACTOR BYPASS (TH1, TH3, TH5)</td>
+          <td class="p-2.5 text-right text-amber-400">1.188,16 kWh</td>
+          <td colspan="3" class="p-2.5 text-right text-emerald-300">Loại bỏ 51,64 kWh tổn thất VSD</td>
+          <td class="p-2.5 text-right text-emerald-300">851,42 kWh</td>
+          <td class="p-2.5 text-right text-emerald-400">+336,74 kWh</td>
+          <td class="p-2.5 text-center text-emerald-300">111.124,2 kWh/năm</td>
+        </tr>
+      `;
+      tbody.innerHTML = rowsHtml + totalRowsHtml;
+
+      // Biểu đồ SVG
+      const w = 960, h = 235, padL = 48, padR = 54, padT = 22, padB = 38;
+      const plotW = w - padL - padR, plotH = h - padT - padB;
+      const maxKwh = 300, maxRpm = 1600;
+      const groupW = plotW / SURVEY_CASES.length;
+
+      let gridLines = '';
+      [0, 75, 150, 225, 300].forEach(val => {
+        const y = padT + plotH - (val / maxKwh) * plotH;
+        const rpmLabel = Math.round((val / maxKwh) * maxRpm);
+        gridLines += `
+          <line x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="#1e293b" stroke-dasharray="3 3"/>
+          <text x="${padL - 6}" y="${y + 3}" fill="#94a3b8" font-size="9" font-family="JetBrains Mono" text-anchor="end">${val}</text>
+          <text x="${w - padR + 6}" y="${y + 3}" fill="#fda4af" font-size="9" font-family="JetBrains Mono" text-anchor="start">${rpmLabel}</text>
+        `;
+      });
+
+      let barsSvg = '';
+      let rpmPoints = [];
+
+      SURVEY_CASES.forEach((c, idx) => {
+        const cx = padL + idx * groupW + groupW / 2;
+        const barW = 20;
+        const h1 = (c.a1 / maxKwh) * plotH, y1 = padT + plotH - h1;
+        const h2 = (c.a2 / maxKwh) * plotH, y2 = padT + plotH - h2;
+        const a2Opt = c.recommendBypass ? c.a1 : c.a2;
+        const h3 = (a2Opt / maxKwh) * plotH, y3 = padT + plotH - h3;
+        const yRpm = padT + plotH - (c.n2 / maxRpm) * plotH;
+        rpmPoints.push({ x: cx, y: yRpm, n2: c.n2 });
+
+        barsSvg += `
+          <g class="cursor-pointer" onclick="selectSurveyCase('${c.id}'); toggleSummaryModal(false);">
+            <rect x="${cx - 32}" y="${y1}" width="${barW}" height="${h1}" rx="2" fill="#f59e0b" opacity="0.9"/>
+            <text x="${cx - 22}" y="${y1 - 4}" fill="#fbbf24" font-size="8" font-family="JetBrains Mono" text-anchor="middle">${c.a1.toFixed(0)}</text>
+            <rect x="${cx - 10}" y="${y2}" width="${barW}" height="${h2}" rx="2" fill="#0ea5e9" opacity="0.9"/>
+            <text x="${cx}" y="${y2 - 4}" fill="#38bdf8" font-size="8" font-family="JetBrains Mono" text-anchor="middle">${c.a2.toFixed(0)}</text>
+            <rect x="${cx + 12}" y="${y3}" width="${barW}" height="${h3}" rx="2" fill="#10b981" opacity="0.9"/>
+            <text x="${cx}" y="${padT + plotH + 15}" fill="#e2e8f0" font-size="10" font-weight="700" font-family="JetBrains Mono" text-anchor="middle">${c.id}</text>
+            <text x="${cx}" y="${padT + plotH + 27}" fill="#94a3b8" font-size="8.5" font-family="JetBrains Mono" text-anchor="middle">${c.timeRange}</text>
+          </g>
+        `;
+      });
+
+      const polylinePts = rpmPoints.map(p => `${p.x},${p.y}`).join(' ');
+      const rpmLineSvg = `
+        <polyline fill="none" stroke="#fb7185" stroke-width="2" points="${polylinePts}"/>
+        ${rpmPoints.map(p => `
+          <circle cx="${p.x}" cy="${p.y}" r="4" fill="#fb7185" stroke="#0f172a" stroke-width="1.5"/>
+          <rect x="${p.x - 22}" y="${p.y - 18}" width="44" height="13" rx="3" fill="#0f172a" fill-opacity="0.85" stroke="#fb7185" stroke-width="0.8"/>
+          <text x="${p.x}" y="${p.y - 9}" fill="#fda4af" font-size="8" font-weight="700" font-family="JetBrains Mono" text-anchor="middle">${p.n2}v/p</text>
+        `).join('')}
+      `;
+
+      chartContainer.innerHTML = `
+        <svg viewBox="0 0 ${w} ${h}" class="w-full min-w-[740px] h-auto block">
+          <text x="12" y="${padT + plotH / 2}" fill="#94a3b8" font-size="9" transform="rotate(-90, 12, ${padT + plotH / 2})" text-anchor="middle">Điện năng (kWh)</text>
+          <text x="${w - 10}" y="${padT + plotH / 2}" fill="#fda4af" font-size="9" transform="rotate(90, ${w - 10}, ${padT + plotH / 2})" text-anchor="middle">Tốc độ n₂ (v/p)</text>
+          ${gridLines}
+          ${barsSvg}
+          ${rpmLineSvg}
+        </svg>
+      `;
+    }
+
+    function toggleSummaryModal(show, tabId = null) {
+      const modal = document.getElementById('summary-modal');
+      if (show) {
+        renderVsdComparisonModalContent();
+        if (tabId) switchModalTab(tabId);
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      } else {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    function copyTechnicalReport() {
+      const params = computeActiveDriveParams();
+      const report = [
+        'NHÓM 1: BÁO CÁO MÔ PHỎNG 3D TRẠM BƠM & XỬ LÝ NƯỚC THẢI SPS14 (ĐÀ NẴNG)',
+        `- Chế độ truyền động: ${state.driveMode} | Khung giờ: ${params.caseObj ? params.caseObj.label : 'Tùy chỉnh'}`,
+        `- Thông số khung giờ hiện tại: Q_vào = ${Math.round(state.qIn)} m³/h, Số bơm = ${params.pumpsCount}, Tốc độ n₂ = ${params.n2} v/p (tỉ lệ ${params.speedRatio.toFixed(2)})`,
+        `- Điện năng khung giờ: Không VSD A₁ = ${params.a1.toFixed(2)} kWh | Có VSD A₂ = ${params.a2.toFixed(2)} kWh | Chênh lệch ΔA = ${params.deltaA.toFixed(2)} kWh`,
+        '- Tổng hợp 24h: Không VSD A₁ = 1.188,16 kWh/ngày | Có VSD 24/24h A₂ = 903,06 kWh/ngày → Tiết kiệm 285,10 kWh/ngày (94.083 kWh/năm = 30,78% A_T, tiết kiệm 142.817.994 VNĐ/năm).',
+        '- Phương án tối ưu Biến tần + Bypass (TH1, TH3, TH5): Tiết kiệm 336,74 kWh/ngày (111.124,2 kWh/năm = 36,36% A_T, tiết kiệm 168.686.536 VNĐ/năm).',
+        '- Dự toán đầu tư trọn gói: V = 209.300.000 VNĐ → Hoàn vốn 1,47 năm (~18 tháng) hoặc 1,24 năm (~15 tháng) khi kết hợp Bypass.'
+      ].join('\n');
+
+      const textarea = document.createElement('textarea');
+      textarea.value = report;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast('Đã sao chép báo cáo mô phỏng 3D & phân tích VSD SPS14 vào bộ nhớ tạm!');
+      } catch (err) {
+        showToast('Không thể sao chép tự động trên trình duyệt này.');
+      }
+      document.body.removeChild(textarea);
+    }
+
+    let toastTimer = null;
+    function showToast(msg) {
+      const toast = document.getElementById('scada-toast');
+      const toastMsg = document.getElementById('scada-toast-msg');
+      if (!toast || !toastMsg) return;
+      toastMsg.textContent = msg;
+      toast.classList.remove('hidden');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3600);
+    }
+
+    // =========================================================================
+    // 10. KHỞI CHẠY VÒNG LẶP WEBGL KHI TẢI XONG TRANG (WINDOW.ONLOAD)
+    // =========================================================================
+    let lastFrameTime = 0;
+
+    function animateLoop(nowMs) {
+      requestAnimationFrame(animateLoop);
+      if (!lastFrameTime) lastFrameTime = nowMs;
+      const dtRealSec = Math.min(0.1, (nowMs - lastFrameTime) / 1000.0);
+      lastFrameTime = nowMs;
+
+      stepSimulation(dtRealSec);
+      update3DSceneObjects(dtRealSec, nowMs / 1000.0);
+      update3DOverlayPositions();
+      updateHUDTelemetry();
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function () {
+      initThreeScene();
+      build3DOverlayLabels();
+      selectSurveyCase('TH1');
+      selectEquipment('SPS14_STATION');
+      requestAnimationFrame(animateLoop);
+    };
+  </script>
+</body>
+</html>
